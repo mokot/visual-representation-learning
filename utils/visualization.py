@@ -36,7 +36,7 @@ def visualize_tensor(tensor: torch.Tensor) -> None:
     if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input tensor must be a torch.Tensor.")
 
-    if len(tensor.shape) != 3 or tensor.shape[0] != 3:
+    if len(tensor.shape) != 3 or tensor.shape[2] != 3:
         raise ValueError("Tensor must have shape (C, H, W) with 3 color channels.")
 
     try:

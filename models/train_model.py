@@ -1,16 +1,15 @@
 import torch
 from pathlib import Path
 from typing import Optional, Literal
-from gaussian_image_trainer import GaussianImageTrainer
-from image_utils import image_path_to_tensor, preprocess_image
-from data_utils import create_default_image
+from models.gaussian_image_trainer import GaussianImageTrainer
+from utils import image_path_to_tensor, create_default_image, preprocess_image
 
 
 def train(
     height: int = 32,
     width: int = 32,
     num_points: int = 1024,
-    save_imgs: bool = True,
+    save_images: bool = True,
     img: Optional[torch.Tensor] = None,
     img_path: Optional[Path] = None,
     iterations: int = 1000,
@@ -24,7 +23,7 @@ def train(
     - height (int): The height of the image.
     - width (int): The width of the image.
     - num_points (int): The number of Gaussians to use.
-    - save_imgs (bool): Whether to save the images during training.
+    - save_images (bool): Whether to save the images during training.
     - img (Optional[torch.Tensor]): The image tensor to fit.
     - img_path (Optional[Path]): The path to the image to fit.
     - iterations (int): The number of iterations to train.
@@ -60,7 +59,7 @@ def train(
         trainer.train(
             iterations=iterations,
             lr=lr,
-            save_imgs=save_imgs,
+            save_images=save_images,
             model_type=model_type,
         )
     except Exception as e:

@@ -59,4 +59,5 @@ def create_default_image(height: int = 32, width: int = 32) -> torch.Tensor:
     image[height // 2 :, width // 2 :, :] = torch.tensor(
         [0.0, 0.0, 1.0], dtype=torch.float32
     )
+    image = (image - 0.5) / 0.5  # Normalize to mean 0 and variance 1
     return image

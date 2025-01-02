@@ -1,4 +1,3 @@
 .venv/
 data/
-temp/
 slurm/logs/

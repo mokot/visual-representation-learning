@@ -2,10 +2,10 @@ import math
 import time
 import torch
 import numpy as np
-from PIL import Image
 from torch import optim
 from pathlib import Path
-from typing import Literal
+from utils import save_gif, save_tensor
+from typing import Optional, Literal
 from gsplat import rasterization, rasterization_2dgs
 
 
@@ -100,7 +100,7 @@ class GaussianImageTrainer:
         self,
         iterations: int = 1000,
         lr: float = 0.01,
-        save_images: bool = False,
+        results_path: Optional[Path] = None,
         model_type: Literal["3dgs", "2dgs"] = "3dgs",
     ) -> None:
         """
@@ -109,7 +109,7 @@ class GaussianImageTrainer:
         Args:
         - iterations (int): Number of iterations to train.
         - lr (float): Learning rate.
-        - save_images (bool): Whether to save images during training.
+        - results_path (Optional[Path]): The path to save the results.
         - model_type (Literal["3dgs", "2dgs"]): Model type ("3dgs" or "2dgs").
 
         Raises:
@@ -169,21 +169,15 @@ class GaussianImageTrainer:
             optimizer.step()
             print(f"Iteration {iter + 1}/{iterations}, Loss: {loss.item()}")
 
-            if save_images and iter % 5 == 0:
+            if results_path and iter % 5 == 0:
                 frames.append((out_image.detach().cpu().numpy() * 255).astype(np.uint8))
 
-        if save_images:
-            frames = [Image.fromarray(frame) for frame in frames]
-            out_dir = Path.cwd() / "results"
-            out_dir.mkdir(parents=True, exist_ok=True)
-            frames[0].save(
-                f"{out_dir}/training.gif",
-                save_all=True,
-                append_images=frames[1:],
-                optimize=False,
-                duration=5,
-                loop=0,
+        if results_path:
+            save_gif(frames, results_path.with_name(f"animation_{results_path.name}"))
+            save_tensor(
+                self.gt_image, results_path.with_name(f"original_{results_path.name}")
             )
+            save_tensor(out_image, results_path.with_name(f"final_{results_path.name}"))
 
         print(f"Final loss: {loss.item()}")
         print(f"Total Time: Rasterization: {times[0]:.3f}s, Backward: {times[1]:.3f}s")

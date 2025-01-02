@@ -167,7 +167,9 @@ class GaussianImageTrainer:
             torch.cuda.synchronize()
             times[1] += time.time() - start
             optimizer.step()
-            print(f"Iteration {iter + 1}/{iterations}, Loss: {loss.item()}")
+
+            if iter % 100 == 0:
+                print(f"Iteration {iter + 1}/{iterations}, Loss: {loss.item()}")
 
             if results_path and iter % 5 == 0:
                 frames.append((out_image.detach().cpu().numpy() * 255).astype(np.uint8))

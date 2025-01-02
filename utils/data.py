@@ -1,4 +1,5 @@
 import torch
+from typing import Dict, List
 from torchvision import datasets
 from torch.utils.data import DataLoader
 from constants import CIFAR10_TRANSFORM
@@ -23,7 +24,7 @@ def load_cifar10(
     - DataLoader: An iterable over the dataset.
     """
     dataset = datasets.CIFAR10(
-        root=data_root,
+        root=f"{data_root}/{'train' if train else 'test'}",
         train=train,
         download=True,
         transform=CIFAR10_TRANSFORM,  # Use the transform defined in constants
@@ -61,3 +62,32 @@ def create_default_image(height: int = 32, width: int = 32) -> torch.Tensor:
     )
     image = (image - 0.5) / 0.5  # Normalize to mean 0 and variance 1
     return image
+
+
+def collect_class_images(
+    dataloader: torch.utils.data.DataLoader, N: int
+) -> Dict[str, List[torch.Tensor]]:
+    """
+    Collects N images for each class from the provided DataLoader.
+
+    Args:
+    - dataloader (torch.utils.data.DataLoader): The DataLoader containing the dataset.
+    - N (int): The number of images to collect for each class.
+
+    Returns:
+    - Dict[str, List[torch.Tensor]]: A dictionary where keys are class names and values are lists of image tensors.
+    """
+    class_images = {k: [] for k in dataloader.dataset.class_to_idx.keys()}
+
+    # Iterate over the DataLoader and collect images
+    for images, labels in dataloader:
+        for image, label in zip(images, labels):
+            label_name = dataloader.dataset.classes[label.item()]
+
+            if len(class_images[label_name]) < N:
+                class_images[label_name].append(image)
+
+            if all(len(v) == N for v in class_images.values()):
+                return class_images
+
+    return class_images

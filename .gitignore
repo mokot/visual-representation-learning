@@ -1,3 +1,16 @@
+# Virtual env
 .venv/
-data/
+
+# Python
+*.pyc
+*.pyo
+__pycache__/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
 slurm/logs/
+
+# Data
+data/

@@ -1,7 +1,7 @@
 import torch
 from pathlib import Path
-from IPython.display import Image as IPImage, display
 from constants import CIFAR10_INVERSE_TRANSFORM
+from IPython.display import Image as IPImage, display, HTML
 
 
 def visualize_gif(gif_path: Path) -> None:
@@ -44,3 +44,37 @@ def visualize_tensor(tensor: torch.Tensor) -> None:
         pil_image.show()
     except Exception as e:
         raise RuntimeError(f"Error visualizing tensor: {e}")
+
+
+def visualize_results(
+    animation_path: Path, final_image_path: Path, original_image_path: Path
+) -> None:
+    """
+    Visualizes an animation (GIF), a final image (JPG), and an original image (JPG).
+
+    Args:
+    - animation_path (Path): Path to the animation (GIF) file.
+    - final_image_path (Path): Path to the final JPG image file.
+    - original_image_path (Path): Path to the original JPG image file.
+
+    Returns:
+    - None
+    """
+    # Create HTML for displaying images in a row and display it
+    html_content = f"""
+    <div style="display: flex; align-items: center; justify-content: center;">
+        <div style="margin: 0px 25px; text-align: center;">
+            <h3>Animation</h3>
+            <img src="{animation_path}" style="min-width: 100px; max-width: 100px;">
+        </div>
+        <div style="margin: 0px 25px; text-align: center;">
+            <h3>Final Image</h3>
+            <img src="{final_image_path}" style="min-width: 100px; max-width: 100px;">
+        </div>
+        <div style="margin: 0px 25px; text-align: center;">
+            <h3>Original Image</h3>
+            <img src="{original_image_path}" style="min-width: 100px; max-width: 100px;">
+        </div>
+    </div>
+    """
+    display(HTML(html_content))

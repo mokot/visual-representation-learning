@@ -1,4 +1,5 @@
 import torch
+from pathlib import Path
 from typing import Dict, List
 from torchvision import datasets
 from torch.utils.data import DataLoader
@@ -9,7 +10,7 @@ def load_cifar10(
     batch_size: int = 64,
     shuffle: bool = True,
     train: bool = True,
-    data_root: str = "./data",
+    data_root: Path = Path("data"),
 ) -> DataLoader:
     """
     Loads the CIFAR-10 dataset.

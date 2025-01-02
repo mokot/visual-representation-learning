@@ -34,6 +34,11 @@ def train(
     - ValueError: If both `image` and `image_path` are provided.
     - Exception: If training fails due to other errors.
     """
+    # Check if training is possible
+    if not torch.cuda.is_available():
+        print("No GPU available. `gpsplat` requires a GPU to train.")
+        return
+
     # Validate inputs
     if image is not None and image_path is not None:
         raise ValueError("Provide either 'image' or 'image_path', not both.")

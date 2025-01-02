@@ -34,12 +34,8 @@ def save_gif(frames: List[torch.Tensor], results_path: Path) -> None:
                 "Frames must be either torch.Tensor or PIL.Image.Image objects."
             )
 
-    # Ensure output directory exists
-    out_dir = Path.cwd() / "results"
-    out_dir.mkdir(parents=True, exist_ok=True)
-
     # Save as GIF
-    gif_path = out_dir / results_path.with_suffix(".gif")
+    gif_path = results_path.with_suffix(".gif")
     pil_frames[0].save(
         gif_path,
         save_all=True,
@@ -74,11 +70,7 @@ def save_tensor(tensor: torch.Tensor, results_path: Path) -> None:
     except Exception as e:
         raise RuntimeError(f"Error transforming from tensor: {e}")
 
-    # Ensure output directory exists
-    out_dir = Path.cwd() / "results"
-    out_dir.mkdir(parents=True, exist_ok=True)
-
     # Save as JPG
-    jpg_path = out_dir / results_path.with_suffix(".jpg")
+    jpg_path = results_path.with_suffix(".jpg")
     pil_image.save(jpg_path, format="JPEG")
     print(f"JPG image saved to: {jpg_path}")

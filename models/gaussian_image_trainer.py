@@ -1,107 +1,207 @@
+# Note: This is a hack to allow importing from the parent directory
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path().resolve().parent))
+
 import math
 import time
 import torch
 import numpy as np
+import torchmetrics
 from torch import optim
 from pathlib import Path
-from utils import save_gif, save_tensor
+from configs import Config
 from typing import Optional, Literal
-from gsplat import rasterization, rasterization_2dgs
+from torch.utils.tensorboard import SummaryWriter
+from gsplat import rasterization_2dgs, rasterization_2dgs_inria_wrapper, DefaultStrategy
+from utils import load_cifar10, save_gif, save_tensor, set_random_seed
 
 
 class GaussianImageTrainer:
-    """Trains random Gaussians to fit an image."""
+    """Trains, optimizes and evaluates Gaussian splats to fit a ground truth image."""
 
-    def __init__(self, gt_image: torch.Tensor, num_points: int = 1024) -> None:
+    def __init__(self, cfg: Config) -> None:
         """
         Initializes the GaussianImageTrainer.
 
         Args:
-        - gt_image (torch.Tensor): The ground truth image to fit.
-        - num_points (int): The number of Gaussians to use.
-
-        Raises:
-        - ValueError: If gt_image is not a 2D or 3D tensor.
+        - cfg (Config): The configuration object.
         """
-        if not isinstance(gt_image, torch.Tensor):
-            raise TypeError("gt_image must be a torch.Tensor.")
-        if gt_image.ndim not in [2, 3]:
-            raise ValueError("gt_image must be a 2D or 3D tensor.")
+        # Check if training is possible
+        if not torch.cuda.is_available():
+            raise Exception("No GPU available. `gpsplat` requires a GPU to train.")
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.gt_image = gt_image.to(device=self.device)
-        self.num_points = num_points
+        # Set seed for reproducibility
+        set_random_seed(cfg.seed)
+
+        self.cfg = cfg
+        self.device = torch.device("cuda")
+
+        # Setup output directories
+        self.results_path = Path(cfg.results_path)
+        self.results_path.mkdir(parents=True, exist_ok=True)
+        self.logs_path = Path(cfg.logs_path)
+        self.logs_path.mkdir(parents=True, exist_ok=True)
+
+        # Tensorboard logging
+        self.writer = SummaryWriter(log_dir=self.logs_path)
+
+        # Load the dataset
+        self.train_loader = load_cifar10(
+            batch_size=cfg.batch_size,
+            shuffle=True,
+            train=True,
+            data_root=cfg.data_path,
+        )
+        self.test_loader = load_cifar10(
+            batch_size=1,
+            shuffle=False,
+            train=False,
+            data_root=cfg.data_path,
+        )
+
+        # Define initialization and model type
+        self.init_type = cfg.init_type
+        self.model_type = cfg.model_type
 
         # Camera and image properties
-        fov_x = math.pi / 2.0
-        self.H, self.W = gt_image.shape[0], gt_image.shape[1]
-        self.focal = 0.5 * float(self.W) / math.tan(0.5 * fov_x)
-        self.image_size = torch.tensor([self.W, self.H, 1], device=self.device)
+        self.num_points = cfg.num_points
+        self.H, self.W = cfg.height, cfg.width
+        self.focal = 0.5 * float(self.W) / math.tan(0.5 * math.pi / 2.0)
 
-        # Initialize Gaussian parameters
-        self._init_gaussians()
+        # Initialize Gaussian splats
+        self.init_gaussians()
+        print("Model initialized. Number of Gaussians:", self.num_points)
 
-    def _init_gaussians(self) -> None:
-        """
-        Initializes random Gaussians for the optimization.
-        """
-        # Bounding box size
-        bd = 2
-
-        # Initialize Gaussian properties
-        self.means = bd * (torch.rand(self.num_points, 3, device=self.device) - 0.5)
-        self.scales = torch.rand(self.num_points, 3, device=self.device)
-        self.rgbs = torch.rand(self.num_points, 3, device=self.device)
-
-        # Initialize quaternion rotations
-        u, v, w = [torch.rand(self.num_points, 1, device=self.device) for _ in range(3)]
-        self.quats = torch.cat(
-            [
-                torch.sqrt(1.0 - u) * torch.sin(2.0 * math.pi * v),
-                torch.sqrt(1.0 - u) * torch.cos(2.0 * math.pi * v),
-                torch.sqrt(u) * torch.sin(2.0 * math.pi * w),
-                torch.sqrt(u) * torch.cos(2.0 * math.pi * w),
-            ],
-            -1,
+        # Densification strategy # TODO
+        self.strategy = DefaultStrategy(
+            verbose=True,
+            prune_opa=cfg.prune_opa,
+            grow_grad2d=cfg.grow_grad2d,
+            grow_scale3d=cfg.grow_scale3d,
+            prune_scale3d=cfg.prune_scale3d,
+            refine_start_iter=cfg.refine_start_iter,
+            refine_stop_iter=cfg.refine_stop_iter,
+            reset_every=cfg.reset_every,
+            refine_every=cfg.refine_every,
+            absgrad=cfg.absgrad,
+            revised_opacity=cfg.revised_opacity,
+            key_for_gradient="gradient_2dgs",
         )
-        self.quats = self.quats / self.quats.norm(dim=-1, keepdim=True)
+        self.strategy.check_sanity(self.splats, self.optimizers)
+        self.strategy_state = self.strategy.initialize_state()
 
-        # Initialize opacities and view matrix
-        self.opacities = torch.ones((self.num_points), device=self.device)
-        self.viewmat = torch.tensor(
-            [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 8.0],
-                [0.0, 0.0, 0.0, 1.0],
-            ],
-            device=self.device,
+        # TODO: Add camera pose optimization
+        # TODO: Add appearance optimization
+
+        # Loss and metrics functions
+        self.mse = torch.nn.MSELoss()
+        self.ssim = torchmetrics.image.StructuralSimilarityIndexMeasure(
+            data_range=1.0
+        ).to(self.device)
+        self.psnr = torchmetrics.image.PeakSignalToNoiseRatio(data_range=1.0).to(
+            self.device
         )
+        self.lpips = torchmetrics.image.lpip.LeastPerceptibleImagePatchSimilarity(
+            normalize=True
+        ).to(self.device)
 
-        # Background color
-        self.background = torch.zeros(3, device=self.device)
+    def init_gaussians(self) -> None:
+        # TODO: Add support for sparse grad and appearance optimization
+        """
+        Initializes Gaussian splats based on the initialization strategy.
+        """
+        if self.init_type == "random":
+            # Random initialization
+            means = self.cfg.extent * (
+                torch.rand(self.num_points, 3, device=self.device) - 0.5
+            )
+            quats = torch.rand(self.num_points, 4, device=self.device)
+            quats = quats / quats.norm(dim=-1, keepdim=True)
+            scales = (
+                torch.rand(self.num_points, 3, device=self.device) * self.cfg.init_scale
+            )
+            opacities = (
+                torch.ones(self.num_points, device=self.device) * self.cfg.init_opacity
+            )
+            colors = torch.rand(self.num_points, 3, device=self.device)
 
-        # Set gradients for trainable parameters
-        for param in [
-            self.means,
-            self.scales,
-            self.quats,
-            self.rgbs,
-            self.opacities,
-        ]:
-            param.requires_grad = True
-        for param in [
-            self.viewmat,
-            self.background,
-        ]:
-            param.requires_grad = False
+        elif self.init_type == "grid":
+            # Grid initialization # TODO - check Frederico's code
+            pass
+
+        elif self.init_type == "knn":
+            # KNN-based initialization # TODO - check source code (references)
+            pass
+        else:
+            raise ValueError(f"Unsupported initialization type: {self.init_type}")
+
+        # Learnable parameters (name, values, and learning rate)
+        params = [
+            (
+                "means",
+                torch.nn.Parameter(
+                    means, requires_grad=self.cfg.learnable_params["means"]
+                ),
+                1.6e-4,
+            ),
+            (
+                "quats",
+                torch.nn.Parameter(
+                    quats, requires_grad=self.cfg.learnable_params["quats"]
+                ),
+                1e-3,
+            ),
+            (
+                "scales",
+                torch.nn.Parameter(
+                    scales, requires_grad=self.cfg.learnable_params["scales"]
+                ),
+                5e-3,
+            ),
+            (
+                "opacities",
+                torch.nn.Parameter(
+                    opacities, requires_grad=self.cfg.learnable_params["opacities"]
+                ),
+                5e-2,
+            ),
+            (
+                "colors",
+                torch.nn.Parameter(
+                    colors, requires_grad=self.cfg.learnable_params["colors"]
+                ),
+                2.5e-3,
+            ),
+        ]
+
+        self.splats = torch.nn.ParameterDict({n: v for n, v, _ in params}).to(
+            self.device
+        )
+        self.optimizers = {
+            name: torch.optim.Adam(
+                [
+                    {
+                        "params": [self.splats[name]],
+                        "lr": lr * math.sqrt(self.cfg.batch_size),
+                    }
+                ],
+                eps=1e-15 / math.sqrt(self.cfg.batch_size),
+                betas=(
+                    1 - self.cfg.batch_size * (1 - 0.9),
+                    1 - self.cfg.batch_size * (1 - 0.999),
+                ),
+            )
+            for name, _, lr in params
+        }
 
     def train(
         self,
         iterations: int = 1000,
         lr: float = 0.01,
         results_path: Optional[Path] = None,
-        model_type: Literal["3dgs", "2dgs"] = "3dgs",
+        model_type: Literal["2dgs", "3dgs"] = "2dgs",
     ) -> None:
         """
         Trains the random Gaussians to fit the ground truth image.
@@ -110,17 +210,17 @@ class GaussianImageTrainer:
         - iterations (int): Number of iterations to train.
         - lr (float): Learning rate.
         - results_path (Optional[Path]): The path to save the results.
-        - model_type (Literal["3dgs", "2dgs"]): Model type ("3dgs" or "2dgs").
+        - model_type (Literal["2dgs", "3dgs"]): Model type ("3dgs" or "2dgs").
 
         Raises:
         - ValueError: If an unsupported model type is provided.
         """
         # Validate model type
-        if model_type not in ["3dgs", "2dgs"]:
+        if model_type not in ["2dgs", "3dgs"]:
             raise ValueError(f"Unsupported model type: {model_type}")
 
         # Select the rasterization function
-        rasterize_fnc = rasterization if model_type == "3dgs" else rasterization_2dgs
+        rasterize_fnc = rasterization_2dgs
 
         # Initialize optimizer and loss
         optimizer = optim.Adam(

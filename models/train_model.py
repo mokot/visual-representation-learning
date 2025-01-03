@@ -14,7 +14,7 @@ def train(
     image_path: Optional[Path] = None,
     iterations: int = 1000,
     lr: float = 0.01,
-    model_type: Literal["3dgs", "2dgs"] = "3dgs",
+    model_type: Literal["2dgs", "3dgs"] = "2dgs",
 ) -> None:
     """
     Trains random Gaussians to fit an image.
@@ -28,7 +28,7 @@ def train(
     - image_path (Optional[Path]): The path to the image to fit.
     - iterations (int): The number of iterations to train.
     - lr (float): The learning rate for optimization.
-    - model_type (Literal["3dgs", "2dgs"]): The model type to use.
+    - model_type (Literal["2dgs", "3dgs"]): The model type to use.
 
     Raises:
     - ValueError: If both `image` and `image_path` are provided.
@@ -38,6 +38,7 @@ def train(
     if not torch.cuda.is_available():
         print("No GPU available. `gpsplat` requires a GPU to train.")
         return
+    device = torch.device("cuda")
 
     # Validate inputs
     if image is not None and image_path is not None:
@@ -54,7 +55,7 @@ def train(
         gt_image = create_default_image(height=height, width=width)
 
     # Preprocess the image
-    gt_image = preprocess_image(gt_image)
+    gt_image = preprocess_image(gt_image, device)
 
     # Initialize the Gaussian Image Trainer
     trainer = GaussianImageTrainer(gt_image=gt_image, num_points=num_points)

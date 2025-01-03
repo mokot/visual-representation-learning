@@ -24,12 +24,13 @@ def image_path_to_tensor(image_path: Path) -> torch.Tensor:
         raise RuntimeError(f"Error processing image: {e}")
 
 
-def preprocess_image(image: torch.Tensor) -> torch.Tensor:
+def preprocess_image(image: torch.Tensor, device: torch.device) -> torch.Tensor:
     """
     Preprocesses the image tensor for model input.
 
     Args:
     - image (torch.Tensor): The image tensor to preprocess.
+    - device (torch.device): The device to move the tensor to.
 
     Returns:
     - torch.Tensor: The preprocessed image tensor on the appropriate device.
@@ -42,6 +43,4 @@ def preprocess_image(image: torch.Tensor) -> torch.Tensor:
         image = image / 255.0
 
     # Move the tensor to the appropriate device
-    return image.to(
-        device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    )
+    return image.to(device=device)

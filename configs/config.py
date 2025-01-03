@@ -1,5 +1,8 @@
-from dataclasses import dataclass, field
+import json
+import torch
 from pathlib import Path
+from utils import custom_serializer
+from dataclasses import dataclass, field
 from typing import List, Optional, Literal
 
 
@@ -8,8 +11,8 @@ class Config:
     # Seed for reproducibility
     seed: int = 42
 
-    # Path for the dataset
-    data_path: Optional[Path] = Path("./data")
+    # Image
+    image: torch.Tensor = torch.rand(3, 32, 32)
 
     # Batch size (for training)
     batch_size: int = 1
@@ -18,15 +21,8 @@ class Config:
     results_path: Optional[Path] = Path("./results")
     logs_path: Optional[Path] = Path("./logs")
 
-    # Dataset and image settings (CIFAR-10 resolution)
-    height: int = 32
-    width: int = 32
-    normalize: bool = True  # Normalize images
-
     # Training settings
     max_steps: int = 1_000
-    eval_steps: List[int] = field(default_factory=lambda: [250, 500, 750, 1_000])
-    save_steps: List[int] = field(default_factory=lambda: [500, 1_000])
     learning_rate: float = 1e-3  # Learning rate (for Adam optimizer)
 
     # Model type and rasterization
@@ -39,10 +35,6 @@ class Config:
     init_opacity: float = 0.5  # Initial opacity of Gaussians
     init_scale: float = 1.0  # Initial scale of Gaussians
 
-    # Spherical harmonics
-    sh_degree: int = 3
-    sh_degree_interval: int = 1000  # Interval for changing SH degree
-
     # Learnable parameters
     learnable_params: dict = field(
         default_factory=lambda: {
@@ -51,5 +43,18 @@ class Config:
             "scales": True,
             "opacities": True,
             "colors": True,
+            "viewmats": False,
+            "Ks": False,
         }
     )
+
+
+def save(self, path: Path) -> None:
+    """
+    Saves the object's state to a JSON file.
+
+    Args:
+        path (Path): The file path to save the object's state.
+    """
+    with open(path, "w") as f:
+        json.dump(self.__dict__, f, indent=4, default=custom_serializer)

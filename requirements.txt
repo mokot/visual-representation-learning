@@ -1,6 +1,9 @@
+tqdm
 numpy
 torch
 gsplat
 ipykernel
 matplotlib
+tensorboard
 torchvision
+torchmetrics

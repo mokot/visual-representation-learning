@@ -4,8 +4,10 @@ from pathlib import Path
 
 sys.path.append(str(Path().resolve().parent))
 
+import json
 import math
 import time
+import tqdm
 import torch
 import numpy as np
 import torchmetrics
@@ -37,6 +39,7 @@ class GaussianImageTrainer:
 
         self.cfg = cfg
         self.device = torch.device("cuda")
+        self.image = cfg.image.to(self.device)
 
         # Setup output directories
         self.results_path = Path(cfg.results_path)
@@ -47,55 +50,30 @@ class GaussianImageTrainer:
         # Tensorboard logging
         self.writer = SummaryWriter(log_dir=self.logs_path)
 
-        # Load the dataset
-        self.train_loader = load_cifar10(
-            batch_size=cfg.batch_size,
-            shuffle=True,
-            train=True,
-            data_root=cfg.data_path,
-        )
-        self.test_loader = load_cifar10(
-            batch_size=1,
-            shuffle=False,
-            train=False,
-            data_root=cfg.data_path,
-        )
-
         # Define initialization and model type
         self.init_type = cfg.init_type
         self.model_type = cfg.model_type
 
         # Camera and image properties
         self.num_points = cfg.num_points
-        self.H, self.W = cfg.height, cfg.width
-        self.focal = 0.5 * float(self.W) / math.tan(0.5 * math.pi / 2.0)
+        self.H, self.W = self.image.shape[-2:]
 
         # Initialize Gaussian splats
         self.init_gaussians()
         print("Model initialized. Number of Gaussians:", self.num_points)
 
-        # Densification strategy # TODO
+        # Densification strategy
         self.strategy = DefaultStrategy(
-            verbose=True,
-            prune_opa=cfg.prune_opa,
-            grow_grad2d=cfg.grow_grad2d,
-            grow_scale3d=cfg.grow_scale3d,
-            prune_scale3d=cfg.prune_scale3d,
-            refine_start_iter=cfg.refine_start_iter,
-            refine_stop_iter=cfg.refine_stop_iter,
-            reset_every=cfg.reset_every,
-            refine_every=cfg.refine_every,
-            absgrad=cfg.absgrad,
-            revised_opacity=cfg.revised_opacity,
-            key_for_gradient="gradient_2dgs",
+            key_for_gradient="gradient_2dgs",  # Needed for 2dgs
         )
         self.strategy.check_sanity(self.splats, self.optimizers)
         self.strategy_state = self.strategy.initialize_state()
 
-        # TODO: Add camera pose optimization
-        # TODO: Add appearance optimization
+        # Option: Add camera pose optimization
+        # Option: Add appearance optimization
 
         # Loss and metrics functions
+        self.l1 = torch.nn.L1Loss()
         self.mse = torch.nn.MSELoss()
         self.ssim = torchmetrics.image.StructuralSimilarityIndexMeasure(
             data_range=1.0
@@ -108,7 +86,6 @@ class GaussianImageTrainer:
         ).to(self.device)
 
     def init_gaussians(self) -> None:
-        # TODO: Add support for sparse grad and appearance optimization
         """
         Initializes Gaussian splats based on the initialization strategy.
         """
@@ -118,7 +95,6 @@ class GaussianImageTrainer:
                 torch.rand(self.num_points, 3, device=self.device) - 0.5
             )
             quats = torch.rand(self.num_points, 4, device=self.device)
-            quats = quats / quats.norm(dim=-1, keepdim=True)
             scales = (
                 torch.rand(self.num_points, 3, device=self.device) * self.cfg.init_scale
             )
@@ -126,13 +102,32 @@ class GaussianImageTrainer:
                 torch.ones(self.num_points, device=self.device) * self.cfg.init_opacity
             )
             colors = torch.rand(self.num_points, 3, device=self.device)
+            viewmats = torch.tensor(
+                [
+                    [1.0, 0.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0, 0.0],
+                    [0.0, 0.0, 1.0, 8.0],
+                    [0.0, 0.0, 0.0, 1.0],
+                ],
+                device=self.device,
+            )
+            focal = 0.5 * float(self.W) / math.tan(0.5 * math.pi / 2.0)
+            Ks = torch.tensor(
+                [
+                    [focal, 0, self.W / 2],
+                    [0, focal, self.H / 2],
+                    [0, 0, 1],
+                ],
+                device=self.device,
+            )
 
         elif self.init_type == "grid":
-            # Grid initialization # TODO - check Frederico's code
+            # Option: Grid initialization
+            # TODO: means should not be learnable
             pass
 
         elif self.init_type == "knn":
-            # KNN-based initialization # TODO - check source code (references)
+            # Option: KNN-based initialization
             pass
         else:
             raise ValueError(f"Unsupported initialization type: {self.init_type}")
@@ -174,7 +169,21 @@ class GaussianImageTrainer:
                 ),
                 2.5e-3,
             ),
+            (
+                "viewmats",
+                torch.nn.Parameter(
+                    viewmats, requires_grad=self.cfg.learnable_params["viewmats"]
+                ),
+                0.0,
+            ),
+            (
+                "Ks",
+                torch.nn.Parameter(Ks, requires_grad=self.cfg.learnable_params["Ks"]),
+                0.0,
+            ),
         ]
+
+        # Option: Feature-based dimensionality, where color is spherical harmonics
 
         self.splats = torch.nn.ParameterDict({n: v for n, v, _ in params}).to(
             self.device
@@ -193,93 +202,165 @@ class GaussianImageTrainer:
                     1 - self.cfg.batch_size * (1 - 0.999),
                 ),
             )
-            for name, _, lr in params
+            for name, values, lr in params
+            if values.requires_grad
         }
 
     def train(
         self,
-        iterations: int = 1000,
-        lr: float = 0.01,
-        results_path: Optional[Path] = None,
-        model_type: Literal["2dgs", "3dgs"] = "2dgs",
     ) -> None:
         """
-        Trains the random Gaussians to fit the ground truth image.
-
-        Args:
-        - iterations (int): Number of iterations to train.
-        - lr (float): Learning rate.
-        - results_path (Optional[Path]): The path to save the results.
-        - model_type (Literal["2dgs", "3dgs"]): Model type ("3dgs" or "2dgs").
-
-        Raises:
-        - ValueError: If an unsupported model type is provided.
+        Trains the Gaussians to fit the ground truth image.
         """
-        # Validate model type
-        if model_type not in ["2dgs", "3dgs"]:
-            raise ValueError(f"Unsupported model type: {model_type}")
+        cfg = self.cfg
+        cfg.save(self.logs_path / "config.json")
+        image = self.image
+        save_tensor(image, self.results_path / "original.png")
 
-        # Select the rasterization function
-        rasterize_fnc = rasterization_2dgs
-
-        # Initialize optimizer and loss
-        optimizer = optim.Adam(
-            [self.rgbs, self.means, self.scales, self.opacities, self.quats], lr
+        scheduler = torch.optim.lr_scheduler.ExponentialLR(
+            self.optimizers["means"], gamma=0.01 ** (1.0 / cfg.max_steps)
         )
-        mse_loss = torch.nn.MSELoss()
 
+        # Training loop
         frames = []
         times = [0, 0]  # (rasterization, backward pass)
+        progress_bar = tqdm.tqdm(range(cfg.max_steps))
+        for step in progress_bar:
+            means = self.splats["means"]
+            quats = self.splats["quats"] / self.splats["quats"].norm(
+                dim=-1, keepdim=True
+            )
+            scales = self.splats["scales"]
+            opacities = torch.sigmoid(self.splats["opacities"])
+            colors = torch.sigmoid(self.splats["colors"])
+            viewmats = self.splats["viewmats"]
+            Ks = self.splats["Ks"]
 
-        # Camera intrinsics
-        K = torch.tensor(
-            [
-                [self.focal, 0, self.W / 2],
-                [0, self.focal, self.H / 2],
-                [0, 0, 1],
-            ],
-            device=self.device,
-        )
-
-        for iter in range(iterations):
             start = time.time()
-            renders = rasterize_fnc(
-                self.means,
-                self.quats / self.quats.norm(dim=-1, keepdim=True),
-                self.scales,
-                torch.sigmoid(self.opacities),
-                torch.sigmoid(self.rgbs),
-                self.viewmat[None],
-                K[None],
-                self.W,
-                self.H,
-                packed=False,
-            )[0]
-            out_image = renders[0]
+
+            # Rasterize the splats
+            if self.model_type == "2dgs":
+                (
+                    render_colors,
+                    render_alphas,
+                    render_normals,
+                    normals_from_depth,
+                    render_distort,
+                    render_median,
+                    info,
+                ) = rasterization_2dgs(
+                    means=means,
+                    quats=quats,
+                    scales=scales,
+                    opacities=opacities,
+                    colors=colors,
+                    viewmats=viewmats,
+                    Ks=Ks,
+                    W=self.W,
+                    H=self.H,
+                    packed=False,
+                )
+            elif self.model_type == "2dgs-inria":
+                renders, info = rasterization_2dgs_inria_wrapper(
+                    means=means,
+                    quats=quats,
+                    scales=scales,
+                    opacities=opacities,
+                    colors=colors,
+                    viewmats=viewmats,
+                    Ks=Ks,
+                    W=self.W,
+                    H=self.H,
+                    packed=False,
+                )
+                render_colors, render_alphas = renders
+                render_normals = info["normals_rend"]
+                normals_from_depth = info["normals_surf"]
+                render_distort = info["render_distloss"]
+                render_median = render_colors[..., 3]
+            else:
+                raise ValueError(f"Unsupported model type: {self.model_type}")
+
             torch.cuda.synchronize()
             times[0] += time.time() - start
 
-            # Compute loss and update
-            loss = mse_loss(out_image, self.gt_image)
-            optimizer.zero_grad()
+            if render_colors.shape[-1] == 4:
+                render_colors = render_colors[..., :3]
+
+            # Pre-backward step
+            self.strategy.step_pre_backward(
+                params=self.splats,
+                optimizers=self.optimizers,
+                state=self.strategy_state,
+                step=step,
+                info=info,
+            )
+
+            # Compute loss
+            l1_loss = self.l1(render_colors, image)
+            mse_loss = self.mse(render_colors, image)
+            ssim_loss = 1.0 - self.ssim(
+                render_colors.permute(0, 3, 1, 2), image.permute(0, 3, 1, 2)
+            )
+
+            # Option: Add depth loss
+            # Option: Add normal loss
+            # Option: Add distortion loss
+
+            loss = (l1_loss + mse_loss + ssim_loss) / 3.0
+
+            # Backward step
+            for optimizer in self.optimizers.values():
+                optimizer.zero_grad()
+
             start = time.time()
             loss.backward()
             torch.cuda.synchronize()
             times[1] += time.time() - start
-            optimizer.step()
 
-            if iter % 100 == 0:
-                print(f"Iteration {iter + 1}/{iterations}, Loss: {loss.item()}")
+            # Compute total loss
+            loss = np.mean([l1_loss, mse_loss, ssim_loss])
+            description = f"Loss: {loss:.3f} (L1: {l1_loss:.3f}, MSE: {mse_loss:.3f}, SSIM: {ssim_loss:.3f})"
+            progress_bar.set_description(description)
 
-            if results_path and iter % 5 == 0:
-                frames.append((out_image.detach().cpu().numpy() * 255).astype(np.uint8))
+            # TODO: Tensorboard logging
 
-        if results_path:
-            save_gif(frames, results_path.with_name(f"animation_{results_path.name}"))
-            save_tensor(
-                self.gt_image, results_path.with_name(f"original_{results_path.name}")
+            # Post-backward step
+            self.strategy.step_post_backward(
+                params=self.splats,
+                optimizers=self.optimizers,
+                state=self.strategy_state,
+                step=step,
+                info=info,
+                packed=False,
             )
-            save_tensor(out_image, results_path.with_name(f"final_{results_path.name}"))
 
+            # Optimize the parameters and update the learning rate
+            for optimizer in self.optimizers.values():
+                optimizer.step()
+            scheduler.step()
+
+            # Save logs and results
+            if step % 5 == 0:
+                frames.append(
+                    (render_colors.detach().cpu().numpy() * 255).astype(np.uint8)
+                )
+            if step % 100 == 0:
+                save_tensor(render_colors, self.results_path / f"step_{step:05d}.png")
+                # Save the current splat into log file - TODO
+
+        # Save the final results
+        save_gif(frames, self.results_path / "animation.gif")
+        save_tensor(render_colors, self.results_path / "final.png")
         print(f"Final loss: {loss.item()}")
         print(f"Total Time: Rasterization: {times[0]:.3f}s, Backward: {times[1]:.3f}s")
+
+    # def save(self, path: Path) -> None:
+    #     """
+    #     Saves the object's state to a JSON file.
+
+    #     Args:
+    #         path (Path): The file path to save the object's state.
+    #     """
+    #     with open(path, "w") as f:
+    #         json.dump(self.__dict__, f, indent=4, default=custom_serializer)

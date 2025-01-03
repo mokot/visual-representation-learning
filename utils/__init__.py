@@ -3,6 +3,7 @@ from .file import save_gif, save_tensor
 from .image import image_path_to_tensor, preprocess_image
 from .random import set_random_seed
 from .search_space import generate_grid_search_combinations
+from .serialization import custom_serializer
 from .visualization import visualize_gif, visualize_tensor, visualize_results
 
 __all__ = [
@@ -15,6 +16,7 @@ __all__ = [
     "preprocess_image",
     "set_random_seed",
     "generate_grid_search_combinations",
+    "custom_serializer",
     "visualize_gif",
     "visualize_tensor",
     "visualize_results",

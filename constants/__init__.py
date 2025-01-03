@@ -1,8 +1,8 @@
-from .search_space import GRID_SEARCH_SPACE
+from .search_space import GRID_SEARCH_SPACE_TEST_1
 from .transforms import CIFAR10_TRANSFORM, CIFAR10_INVERSE_TRANSFORM
 
 __all__ = [
-    "GRID_SEARCH_SPACE",
+    "GRID_SEARCH_SPACE_TEST_1",
     "CIFAR10_TRANSFORM",
     "CIFAR10_INVERSE_TRANSFORM",
 ]

@@ -1,7 +1,7 @@
 import torch
 from pathlib import Path
 from typing import Optional, Literal
-from models.gaussian_image_trainer import GaussianImageTrainer
+from models.gaussian_image_trainer_bak import GaussianImageTrainer
 from utils import image_path_to_tensor, create_default_image, preprocess_image
 
 

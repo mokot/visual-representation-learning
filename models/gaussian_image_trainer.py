@@ -124,7 +124,52 @@ class GaussianImageTrainer:
         elif self.init_type == "grid":
             # Option: Grid initialization
             # TODO: means should not be learnable
-            pass
+            square_root = round(math.sqrt(self.num_points))
+            if square_root ** 2 != self.num_points:
+                raise ValueError(f"When init_type is grid, num_points must be a perfect square. Received num_points={self.num_points}.")
+                
+            grid_size = square_root
+            bd_min, bd_max = (-1.0, 1.0)
+            
+            # 2D Grid Initialization (z = 0)
+            grid_x = torch.linspace(bd_min, bd_max, grid_size, device=self.device)
+            grid_y = torch.linspace(bd_min, bd_max, grid_size, device=self.device)
+            
+            mesh = torch.meshgrid(grid_x, grid_y, indexing='ij')
+            grid_points_2d = torch.stack(mesh, dim=-1).reshape(-1, 2)
+            
+            # Append a fixed z-coordinate (e.g., z = 0)
+            fixed_z = torch.zeros((self.num_points, 1), device=self.device)
+            self.means = torch.cat([grid_points_2d, fixed_z], dim=1)
+
+            
+            # TODO: Actually, only the means should change according to the init_type to avoid repeating the following block:
+            quats = torch.rand(self.num_points, 4, device=self.device)
+            scales = (
+                torch.rand(self.num_points, 3, device=self.device) * self.cfg.init_scale
+            )
+            opacities = (
+                torch.ones(self.num_points, device=self.device) * self.cfg.init_opacity
+            )
+            colors = torch.rand(self.num_points, 3, device=self.device)
+            viewmats = torch.tensor(
+                [
+                    [1.0, 0.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0, 0.0],
+                    [0.0, 0.0, 1.0, 8.0],
+                    [0.0, 0.0, 0.0, 1.0],
+                ],
+                device=self.device,
+            )
+            focal = 0.5 * float(self.W) / math.tan(0.5 * math.pi / 2.0)
+            Ks = torch.tensor(
+                [
+                    [focal, 0, self.W / 2],
+                    [0, focal, self.H / 2],
+                    [0, 0, 1],
+                ],
+                device=self.device,
+            )
 
         elif self.init_type == "knn":
             # Option: KNN-based initialization
@@ -136,10 +181,14 @@ class GaussianImageTrainer:
         params = [
             (
                 "means",
+                req_grad = True
+                if self.init_type == "grid":
+                    req_grad = False
+                
                 torch.nn.Parameter(
-                    means, requires_grad=self.cfg.learnable_params["means"]
+                    means, requires_grad=req_grad  # @Rok I hope this is OK for you
                 ),
-                1.6e-4,
+                1.6e-4,  # @Rok what do these numbers mean?
             ),
             (
                 "quats",

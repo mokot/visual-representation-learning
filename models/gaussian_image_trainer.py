@@ -178,15 +178,15 @@ class GaussianImageTrainer:
             raise ValueError(f"Unsupported initialization type: {self.init_type}")
 
         # Learnable parameters (name, values, and learning rate)
+        means_req_grad = True
+        if self.init_type == "grid":
+            means_req_grad = False
+        
         params = [
             (
-                "means",
-                req_grad = True
-                if self.init_type == "grid":
-                    req_grad = False
-                
+                "means",                
                 torch.nn.Parameter(
-                    means, requires_grad=req_grad  # @Rok I hope this is OK for you
+                    means, requires_grad=means_req_grad  # @Rok I hope this solution is OK for you
                 ),
                 1.6e-4,  # @Rok what do these numbers mean?
             ),

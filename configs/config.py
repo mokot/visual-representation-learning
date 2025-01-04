@@ -29,7 +29,7 @@ class Config:
     model_type: Literal["2dgs", "2dgs-inria"] = "2dgs"
 
     # Gaussian initialization and strategy
-    init_type: Literal["random", "grid", "knn"] = "random"
+    init_type: Literal["random", "grid", "knn"] = "random"  # TODO @Rok maybe only specify init_means as the rest is redundant?
     num_points: int = 1_024  # Number of Gaussians (32x32)
     extent: float = 2.0  # Extent of Gaussians
     init_opacity: float = 0.5  # Initial opacity of Gaussians

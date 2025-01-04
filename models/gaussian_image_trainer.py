@@ -13,7 +13,7 @@ import numpy as np
 import torchmetrics
 from torch import optim
 from pathlib import Path
-from configs import Config
+from configs import Config, cfg_save
 from typing import Optional, Literal
 from torch.utils.tensorboard import SummaryWriter
 from gsplat import rasterization_2dgs, rasterization_2dgs_inria_wrapper, DefaultStrategy
@@ -78,10 +78,10 @@ class GaussianImageTrainer:
         self.ssim = torchmetrics.image.StructuralSimilarityIndexMeasure(
             data_range=1.0
         ).to(self.device)
-        self.psnr = torchmetrics.image.PeakSignalToNoiseRatio(data_range=1.0).to(
+        self.psnr = torchmetrics.image.PeakSignalNoiseRatio(data_range=1.0).to(  # @Rok changed to correct name
             self.device
         )
-        self.lpips = torchmetrics.image.lpip.LeastPerceptibleImagePatchSimilarity(
+        self.lpips = torchmetrics.image.lpip.LearnedPerceptualImagePatchSimilarity(  #  @Rok changed to correct name
             normalize=True
         ).to(self.device)
 
@@ -218,18 +218,18 @@ class GaussianImageTrainer:
                 ),
                 2.5e-3,
             ),
-            (
-                "viewmats",
-                torch.nn.Parameter(
-                    viewmats, requires_grad=self.cfg.learnable_params["viewmats"]
-                ),
-                0.0,
-            ),
-            (
-                "Ks",
-                torch.nn.Parameter(Ks, requires_grad=self.cfg.learnable_params["Ks"]),
-                0.0,
-            ),
+            # (  #  @Rok comented out as this lead to a problem with the sanity check.
+            #     "viewmats",
+            #     torch.nn.Parameter(
+            #         viewmats, requires_grad=self.cfg.learnable_params["viewmats"]
+            #     ),
+            #     0.0,
+            # ),
+            # (
+            #     "Ks",
+            #     torch.nn.Parameter(Ks, requires_grad=self.cfg.learnable_params["Ks"]),
+            #     0.0,
+            # ),
         ]
 
         # Option: Feature-based dimensionality, where color is spherical harmonics
@@ -262,7 +262,7 @@ class GaussianImageTrainer:
         Trains the Gaussians to fit the ground truth image.
         """
         cfg = self.cfg
-        cfg.save(self.logs_path / "config.json")
+        cfg_save(self.logs_path / "config.json")  # @Rok changed method
         image = self.image
         save_tensor(image, self.results_path / "original.png")
 

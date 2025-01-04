@@ -49,7 +49,7 @@ class Config:
     )
 
 
-def save(self, path: Path) -> None:
+def cfg_save(self, path: Path) -> None:
     """
     Saves the object's state to a JSON file.
 

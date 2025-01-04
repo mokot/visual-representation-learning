@@ -48,13 +48,12 @@ class Config:
         }
     )
 
+    def save(self, path: Path) -> None:
+        """
+        Saves the object's state to a JSON file.
 
-def cfg_save(self, path: Path) -> None:
-    """
-    Saves the object's state to a JSON file.
-
-    Args:
-        path (Path): The file path to save the object's state.
-    """
-    with open(path, "w") as f:
-        json.dump(self.__dict__, f, indent=4, default=custom_serializer)
+        Args:
+            path (Path): The file path to save the object's state.
+        """
+        with open(path, "w") as f:
+            json.dump(self.__dict__, f, indent=4, default=custom_serializer)

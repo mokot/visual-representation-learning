@@ -13,7 +13,7 @@ import numpy as np
 import torchmetrics
 from torch import optim
 from pathlib import Path
-from configs import Config, cfg_save
+from configs import Config
 from typing import Optional, Literal
 from torch.utils.tensorboard import SummaryWriter
 from gsplat import rasterization_2dgs, rasterization_2dgs_inria_wrapper, DefaultStrategy
@@ -262,7 +262,7 @@ class GaussianImageTrainer:
         Trains the Gaussians to fit the ground truth image.
         """
         cfg = self.cfg
-        cfg_save(self.logs_path / "config.json")  # @Rok changed method
+        cfg.save(self.logs_path / "config.json")  # @Rok changed method
         image = self.image
         save_tensor(image, self.results_path / "original.png")
 

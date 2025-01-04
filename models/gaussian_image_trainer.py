@@ -1,11 +1,10 @@
 import math
 import time
-import tqdm
 import torch
 import numpy as np
 import torchmetrics
 from pathlib import Path
-from configs import Config
+from configs import get_progress_bar, Config
 from torch.utils.tensorboard import SummaryWriter
 from gsplat import (
     rasterization,
@@ -277,7 +276,11 @@ class GaussianImageTrainer:
         # Training loop
         frames = []
         times = [0, 0]  # (rasterization, backward pass)
-        progress_bar = tqdm.tqdm(range(cfg.max_steps))
+        progress_bar = get_progress_bar(
+            range(cfg.max_steps),
+            max_steps=cfg.max_steps,
+            description="Training Progress",
+        )
         for step in progress_bar:
             means = (
                 self.splats["means"]

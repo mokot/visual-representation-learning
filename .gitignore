@@ -14,3 +14,10 @@ slurm/logs/
 
 # Data
 data/
+
+# Results
+results/step_*
+results/splat_*
+
+# Logs
+logs/events.out.tfevents.*

@@ -1,23 +1,26 @@
-# Note: This is a hack to allow importing from the parent directory
-import sys
-from pathlib import Path
-
-sys.path.append(str(Path().resolve().parent))
-
-import json
 import math
 import time
 import tqdm
 import torch
 import numpy as np
 import torchmetrics
-from torch import optim
 from pathlib import Path
 from configs import Config
-from typing import Optional, Literal
 from torch.utils.tensorboard import SummaryWriter
-from gsplat import rasterization_2dgs, rasterization_2dgs_inria_wrapper, DefaultStrategy
-from utils import load_cifar10, save_gif, save_tensor, set_random_seed
+from gsplat import (
+    rasterization,
+    rasterization_2dgs,
+    rasterization_2dgs_inria_wrapper,
+    MCMCStrategy,
+)
+from utils import (
+    append_log,
+    save_gif,
+    save_splat,
+    save_splat_hdf5,
+    save_tensor,
+    set_random_seed,
+)
 
 
 class GaussianImageTrainer:
@@ -56,15 +59,17 @@ class GaussianImageTrainer:
 
         # Camera and image properties
         self.num_points = cfg.num_points
-        self.H, self.W = self.image.shape[-2:]
+        self.H, self.W = cfg.image.shape[:2]
 
         # Initialize Gaussian splats
         self.init_gaussians()
         print("Model initialized. Number of Gaussians:", self.num_points)
 
         # Densification strategy
-        self.strategy = DefaultStrategy(
-            key_for_gradient="gradient_2dgs",  # Needed for 2dgs
+        self.strategy = MCMCStrategy(
+            refine_start_iter=50,
+            refine_every=10,
+            min_opacity=0.001,
         )
         self.strategy.check_sanity(self.splats, self.optimizers)
         self.strategy_state = self.strategy.initialize_state()
@@ -78,10 +83,10 @@ class GaussianImageTrainer:
         self.ssim = torchmetrics.image.StructuralSimilarityIndexMeasure(
             data_range=1.0
         ).to(self.device)
-        self.psnr = torchmetrics.image.PeakSignalNoiseRatio(data_range=1.0).to(  # @Rok changed to correct name
+        self.psnr = torchmetrics.image.PeakSignalNoiseRatio(data_range=1.0).to(
             self.device
         )
-        self.lpips = torchmetrics.image.lpip.LearnedPerceptualImagePatchSimilarity(  #  @Rok changed to correct name
+        self.lpips = torchmetrics.image.lpip.LearnedPerceptualImagePatchSimilarity(
             normalize=True
         ).to(self.device)
 
@@ -102,7 +107,7 @@ class GaussianImageTrainer:
                 torch.ones(self.num_points, device=self.device) * self.cfg.init_opacity
             )
             colors = torch.rand(self.num_points, 3, device=self.device)
-            self.viewmats = torch.tensor(  # @Rok Directly set self.viewmats here instead of setting it as a parameter
+            viewmats = torch.tensor(
                 [
                     [1.0, 0.0, 0.0, 0.0],
                     [0.0, 1.0, 0.0, 0.0],
@@ -112,7 +117,7 @@ class GaussianImageTrainer:
                 device=self.device,
             )
             focal = 0.5 * float(self.W) / math.tan(0.5 * math.pi / 2.0)
-            self.Ks = torch.tensor(  # @Rok  Directly set self.Ks here
+            Ks = torch.tensor(
                 [
                     [focal, 0, self.W / 2],
                     [0, focal, self.H / 2],
@@ -125,24 +130,25 @@ class GaussianImageTrainer:
             # Option: Grid initialization
             # TODO: means should not be learnable
             square_root = round(math.sqrt(self.num_points))
-            if square_root ** 2 != self.num_points:
-                raise ValueError(f"When init_type is grid, num_points must be a perfect square. Received num_points={self.num_points}.")
-                
+            if square_root**2 != self.num_points:
+                raise ValueError(
+                    f"When init_type is grid, num_points must be a perfect square. Received num_points={self.num_points}."
+                )
+
             grid_size = square_root
             bd_min, bd_max = (-1.0, 1.0)
-            
+
             # 2D Grid Initialization (z = 0)
             grid_x = torch.linspace(bd_min, bd_max, grid_size, device=self.device)
             grid_y = torch.linspace(bd_min, bd_max, grid_size, device=self.device)
-            
-            mesh = torch.meshgrid(grid_x, grid_y, indexing='ij')
+
+            mesh = torch.meshgrid(grid_x, grid_y, indexing="ij")
             grid_points_2d = torch.stack(mesh, dim=-1).reshape(-1, 2)
-            
+
             # Append a fixed z-coordinate (e.g., z = 0)
             fixed_z = torch.zeros((self.num_points, 1), device=self.device)
             self.means = torch.cat([grid_points_2d, fixed_z], dim=1)
 
-            
             # TODO: Actually, only the means should change according to the init_type to avoid repeating the following block:
             quats = torch.rand(self.num_points, 4, device=self.device)
             scales = (
@@ -177,18 +183,19 @@ class GaussianImageTrainer:
         else:
             raise ValueError(f"Unsupported initialization type: {self.init_type}")
 
-        # Learnable parameters (name, values, and learning rate)
-        means_req_grad = True
-        if self.init_type == "grid":
-            means_req_grad = False
-        
+        # Parameters (name, values, and learning rate)
         params = [
             (
-                "means",                
+                "means",
                 torch.nn.Parameter(
-                    means, requires_grad=means_req_grad  # @Rok I hope this solution is OK for you
+                    means,
+                    requires_grad=(
+                        False
+                        if self.init_type == "grid"
+                        else self.cfg.learnable_params["means"]
+                    ),
                 ),
-                1.6e-4,  # @Rok what do these numbers mean?
+                1.6e-4,
             ),
             (
                 "quats",
@@ -218,34 +225,31 @@ class GaussianImageTrainer:
                 ),
                 2.5e-3,
             ),
-            # (  #  @Rok comented out as this lead to a problem with the sanity check.
-            #     "viewmats",
-            #     torch.nn.Parameter(
-            #         viewmats, requires_grad=self.cfg.learnable_params["viewmats"]
-            #     ),
-            #     0.0,
-            # ),
-            # (
-            #     "Ks",
-            #     torch.nn.Parameter(Ks, requires_grad=self.cfg.learnable_params["Ks"]),
-            #     0.0,
-            # ),
+            (
+                "viewmats",
+                torch.nn.Parameter(viewmats, requires_grad=False),
+                0.0,
+            ),
+            (
+                "Ks",
+                torch.nn.Parameter(Ks, requires_grad=False),
+                0.0,
+            ),
         ]
 
         # Option: Feature-based dimensionality, where color is spherical harmonics
 
-        self.splats = torch.nn.ParameterDict({n: v for n, v, _ in params}).to(
-            self.device
-        )
-        
+        self.splats = torch.nn.ParameterDict(
+            {name: value for name, value, _ in params if value.requires_grad}
+        ).to(self.device)
+        self.splat_features = torch.nn.ParameterDict(
+            {name: value for name, value, _ in params if not value.requires_grad}
+        ).to(self.device)
+
         self.optimizers = {
             name: torch.optim.Adam(
-                [
-                    {
-                        "params": [self.splats[name]],
-                        "lr": lr * math.sqrt(self.cfg.batch_size),
-                    }
-                ],
+                params=[self.splats[name]],
+                lr=lr * math.sqrt(self.cfg.batch_size),
                 eps=1e-15 / math.sqrt(self.cfg.batch_size),
                 betas=(
                     1 - self.cfg.batch_size * (1 - 0.9),
@@ -255,6 +259,9 @@ class GaussianImageTrainer:
             for name, values, lr in params
             if values.requires_grad
         }
+        self.scheduler = torch.optim.lr_scheduler.ExponentialLR(
+            self.optimizers["means"], gamma=0.01 ** (1.0 / self.cfg.max_steps)
+        )  # Optimize learning rate for means only
 
     def train(
         self,
@@ -263,46 +270,49 @@ class GaussianImageTrainer:
         Trains the Gaussians to fit the ground truth image.
         """
         cfg = self.cfg
-        cfg.save(self.logs_path / "config.json")  # @Rok changed method
+        cfg.save(self.logs_path / "config.json")
         image = self.image
         save_tensor(image, self.results_path / "original.png")
-
-        scheduler = torch.optim.lr_scheduler.ExponentialLR(
-            self.optimizers["means"], gamma=0.01 ** (1.0 / cfg.max_steps)
-        )
 
         # Training loop
         frames = []
         times = [0, 0]  # (rasterization, backward pass)
         progress_bar = tqdm.tqdm(range(cfg.max_steps))
         for step in progress_bar:
-            means = self.splats["means"]
-            quats = self.splats["quats"] / self.splats["quats"].norm(
-                dim=-1, keepdim=True
+            means = (
+                self.splats["means"]
+                if "means" in self.splats
+                else self.splat_features["means"]
             )
-            scales = self.splats["scales"]
-            opacities = torch.sigmoid(self.splats["opacities"])
-            colors = torch.sigmoid(self.splats["colors"])
-
-            # @Rok changed this here to use the attributes defined above as using params caused an error in the sanity check
-            # viewmats = self.splats["viewmats"]
-            viewmats = self.viewmats
-            # Ks = self.splats["Ks"]
-            Ks = self.Ks
+            quats = (
+                self.splats["quats"]
+                if "quats" in self.splats
+                else self.splat_features["quats"]
+            )
+            quats = quats / quats.norm(dim=-1, keepdim=True)
+            scales = (
+                self.splats["scales"]
+                if "scales" in self.splats
+                else self.splat_features["scales"]
+            )
+            opacities = torch.sigmoid(
+                self.splats["opacities"]
+                if "opacities" in self.splats
+                else self.splat_features["opacities"]
+            )
+            colors = torch.sigmoid(
+                self.splats["colors"]
+                if "colors" in self.splats
+                else self.splat_features["colors"]
+            )
+            viewmats = self.splat_features["viewmats"][None]
+            Ks = self.splat_features["Ks"][None]
 
             start = time.time()
 
             # Rasterize the splats
             if self.model_type == "2dgs":
-                (
-                    render_colors,
-                    render_alphas,
-                    render_normals,
-                    normals_from_depth,
-                    render_distort,
-                    render_median,
-                    info,
-                ) = rasterization_2dgs(
+                (render_colors, _, _, _, _, _, info) = rasterization_2dgs(
                     means=means,
                     quats=quats,
                     scales=scales,
@@ -310,7 +320,7 @@ class GaussianImageTrainer:
                     colors=colors,
                     viewmats=viewmats,
                     Ks=Ks,
-                    width=self.W,  # @ Rok used correct parameter name
+                    width=self.W,
                     height=self.H,
                     packed=False,
                 )
@@ -323,85 +333,111 @@ class GaussianImageTrainer:
                     colors=colors,
                     viewmats=viewmats,
                     Ks=Ks,
-                    W=self.W,
-                    H=self.H,
+                    width=self.W,
+                    height=self.H,
                     packed=False,
                 )
-                render_colors, render_alphas = renders
-                render_normals = info["normals_rend"]
-                normals_from_depth = info["normals_surf"]
-                render_distort = info["render_distloss"]
-                render_median = render_colors[..., 3]
+                render_colors, _ = renders
+                _ = info["normals_rend"]
+                _ = info["normals_surf"]
+                _ = info["render_distloss"]
+                _ = render_colors[..., 3]
+            elif self.model_type == "3dgs":
+                render_colors, _, info = rasterization(
+                    means=means,
+                    quats=quats,
+                    scales=scales,
+                    opacities=opacities,
+                    colors=colors,
+                    viewmats=viewmats,
+                    Ks=Ks,
+                    width=self.W,
+                    height=self.H,
+                    packed=False,
+                )
             else:
                 raise ValueError(f"Unsupported model type: {self.model_type}")
 
             torch.cuda.synchronize()
             times[0] += time.time() - start
 
+            render_colors = render_colors[0]
             if render_colors.shape[-1] == 4:
                 render_colors = render_colors[..., :3]
-
-            # Pre-backward step
-            self.strategy.step_pre_backward(
-                params=self.splats,
-                optimizers=self.optimizers,
-                state=self.strategy_state,
-                step=step,
-                info=info,
-            )
 
             # Compute loss
             l1_loss = self.l1(render_colors, image)
             mse_loss = self.mse(render_colors, image)
             ssim_loss = 1.0 - self.ssim(
-                render_colors.permute(0, 3, 1, 2), image.permute(0, 3, 1, 2)
-            )
+                render_colors.permute(2, 0, 1).unsqueeze(0),
+                image.permute(2, 0, 1).unsqueeze(0),
+            )  # BxCxHxW
 
             # Option: Add depth loss
             # Option: Add normal loss
             # Option: Add distortion loss
 
-            loss = (l1_loss + mse_loss + ssim_loss) / 3.0
+            # Compute total loss
+            loss = mse_loss
 
             # Backward step
             for optimizer in self.optimizers.values():
                 optimizer.zero_grad()
-
             start = time.time()
             loss.backward()
             torch.cuda.synchronize()
             times[1] += time.time() - start
 
-            # Compute total loss
-            loss = np.mean([l1_loss, mse_loss, ssim_loss])
-            description = f"Loss: {loss:.3f} (L1: {l1_loss:.3f}, MSE: {mse_loss:.3f}, SSIM: {ssim_loss:.3f})"
-            progress_bar.set_description(description)
-
-            # TODO: Tensorboard logging
-
-            # Post-backward step
             self.strategy.step_post_backward(
                 params=self.splats,
                 optimizers=self.optimizers,
                 state=self.strategy_state,
                 step=step,
                 info=info,
-                packed=False,
+                lr=self.optimizers["means"].param_groups[0]["lr"],
             )
 
             # Optimize the parameters and update the learning rate
             for optimizer in self.optimizers.values():
                 optimizer.step()
-            scheduler.step()
+            self.scheduler.step()
 
             # Save logs and results
             if step % 5 == 0:
+                description = f"Loss: {loss:.3f} (L1: {l1_loss:.3f}, MSE: {mse_loss:.3f}, SSIM: {ssim_loss:.3f})"
+                progress_bar.set_description(description)
+                append_log(description, self.logs_path / "logs.txt")
                 frames.append(
                     (render_colors.detach().cpu().numpy() * 255).astype(np.uint8)
                 )
             if step % 100 == 0:
                 save_tensor(render_colors, self.results_path / f"step_{step:05d}.png")
-                # Save the current splat into log file - TODO
+                # Tensorboard logging
+                self.writer.add_scalar(
+                    "Number of Gaussians", len(self.splats["means"]), step
+                )
+                self.writer.add_scalar("Loss/Total", loss.item(), step)
+                self.writer.add_scalar("Loss/L1", l1_loss.item(), step)
+                self.writer.add_scalar("Loss/MSE", mse_loss.item(), step)
+                self.writer.add_scalar("Loss/SSIM", ssim_loss.item(), step)
+                self.writer.add_scalar(
+                    "LearningRate", self.optimizers["means"].param_groups[0]["lr"], step
+                )
+                self.writer.add_scalar(
+                    "Memory/Allocated", torch.cuda.memory_allocated(), step
+                )
+                canvas = torch.cat(
+                    [
+                        render_colors.permute(2, 0, 1).unsqueeze(0),
+                        image.permute(2, 0, 1).unsqueeze(0),
+                    ],
+                    dim=-1,
+                )
+                canvas = canvas.detach().cpu().numpy()
+                self.writer.add_image("Rendered vs. Original", canvas.squeeze(0), step)
+                self.writer.flush()
+                save_splat(self.splats, self.results_path / f"splat_{step:05d}.pt")
+                save_splat_hdf5(self.splats, self.results_path / f"splat_{step:05d}.h5")
 
         # Save the final results
         save_gif(frames, self.results_path / "animation.gif")
@@ -409,12 +445,5 @@ class GaussianImageTrainer:
         print(f"Final loss: {loss.item()}")
         print(f"Total Time: Rasterization: {times[0]:.3f}s, Backward: {times[1]:.3f}s")
 
-    # def save(self, path: Path) -> None:
-    #     """
-    #     Saves the object's state to a JSON file.
 
-    #     Args:
-    #         path (Path): The file path to save the object's state.
-    #     """
-    #     with open(path, "w") as f:
-    #         json.dump(self.__dict__, f, indent=4, default=custom_serializer)
+# TODO: create eval method

@@ -26,13 +26,13 @@ class Config:
     learning_rate: float = 1e-3  # Learning rate (for Adam optimizer)
 
     # Model type and rasterization
-    model_type: Literal["2dgs", "2dgs-inria"] = "2dgs"
+    model_type: Literal["2dgs", "2dgs-inria", "3dgs"] = "2dgs"
 
     # Gaussian initialization and strategy
-    init_type: Literal["random", "grid", "knn"] = "random"  # TODO @Rok maybe only specify init_means as the rest is redundant?
+    init_type: Literal["random", "grid", "knn"] = "random"
     num_points: int = 1_024  # Number of Gaussians (32x32)
     extent: float = 2.0  # Extent of Gaussians
-    init_opacity: float = 0.5  # Initial opacity of Gaussians
+    init_opacity: float = 1.0  # Initial opacity of Gaussians
     init_scale: float = 1.0  # Initial scale of Gaussians
 
     # Learnable parameters
@@ -43,8 +43,6 @@ class Config:
             "scales": True,
             "opacities": True,
             "colors": True,
-            "viewmats": False,
-            "Ks": False,
         }
     )
 

@@ -650,21 +650,6 @@ class Runner:
                 packed=cfg.packed,
             )
 
-            # Turn Gradients into Sparse Tensor before running optimizer
-            if cfg.sparse_grad:
-                assert cfg.packed, "Sparse gradients only work with packed mode."
-                gaussian_ids = info["gaussian_ids"]
-                for k in self.splats.keys():
-                    grad = self.splats[k].grad
-                    if grad is None or grad.is_sparse:
-                        continue
-                    self.splats[k].grad = torch.sparse_coo_tensor(
-                        indices=gaussian_ids[None],  # [1, nnz]
-                        values=grad[gaussian_ids],  # [nnz, ...]
-                        size=self.splats[k].size(),  # [N, ...]
-                        is_coalesced=len(Ks) == 1,
-                    )
-
             # optimize
             for optimizer in self.optimizers.values():
                 optimizer.step()
@@ -706,7 +691,6 @@ class Runner:
     def eval(self, step: int):
         """Entry for evaluation."""
         print("Running evaluation...")
-        cfg = self.cfg
         device = self.device
 
         valloader = torch.utils.data.DataLoader(

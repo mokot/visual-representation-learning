@@ -74,3 +74,27 @@ def save_tensor(tensor: torch.Tensor, results_path: Path) -> None:
     jpg_path = results_path.with_suffix(".jpg")
     pil_image.save(jpg_path, format="JPEG")
     print(f"JPG image saved to: {jpg_path}")
+
+
+def append_log(log_message: str, log_file: Path) -> None:
+    """
+    Append a log message to a log file. If the file does not exist or is empty, create it and append the log.
+
+    Args:
+        log_message (str): The log message to append.
+        log_file (Path): The path to the log file.
+    """
+    # Ensure the parent directory exists
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+
+    # Check if the file exists and is not empty
+    if not log_file.exists() or log_file.stat().st_size == 0:
+        with open(log_file, "w") as file:
+            file.write("=== Log Start ===\n")  # Optional header for a new log file
+
+    # Append the log message with a timestamp
+    with open(log_file, "a") as file:
+        from datetime import datetime
+
+        timestamp = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
+        file.write(f"{timestamp} {log_message}\n")

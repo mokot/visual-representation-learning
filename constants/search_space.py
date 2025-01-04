@@ -1,6 +1,6 @@
 
 GRID_SEARCH_SPACE_TEST_0 = {
-    "number_iterations": [500, 1000],
+    "max_steps": [500, 1000],
     "num_points": [16*16, 32*32],
     "init_type": ["random", "grid"]
 }

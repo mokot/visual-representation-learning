@@ -78,10 +78,10 @@ class GaussianImageTrainer:
         self.ssim = torchmetrics.image.StructuralSimilarityIndexMeasure(
             data_range=1.0
         ).to(self.device)
-        self.psnr = torchmetrics.image.PeakSignalToNoiseRatio(data_range=1.0).to(
+        self.psnr = torchmetrics.image.PeakSignalNoiseRatio(data_range=1.0).to(  # @Rok changed to correct name
             self.device
         )
-        self.lpips = torchmetrics.image.lpip.LeastPerceptibleImagePatchSimilarity(
+        self.lpips = torchmetrics.image.lpip.LearnedPerceptualImagePatchSimilarity(  #  @Rok changed to correct name
             normalize=True
         ).to(self.device)
 
@@ -102,7 +102,7 @@ class GaussianImageTrainer:
                 torch.ones(self.num_points, device=self.device) * self.cfg.init_opacity
             )
             colors = torch.rand(self.num_points, 3, device=self.device)
-            viewmats = torch.tensor(
+            self.viewmats = torch.tensor(  # @Rok Directly set self.viewmats here instead of setting it as a parameter
                 [
                     [1.0, 0.0, 0.0, 0.0],
                     [0.0, 1.0, 0.0, 0.0],
@@ -112,7 +112,7 @@ class GaussianImageTrainer:
                 device=self.device,
             )
             focal = 0.5 * float(self.W) / math.tan(0.5 * math.pi / 2.0)
-            Ks = torch.tensor(
+            self.Ks = torch.tensor(  # @Rok  Directly set self.Ks here
                 [
                     [focal, 0, self.W / 2],
                     [0, focal, self.H / 2],
@@ -218,18 +218,18 @@ class GaussianImageTrainer:
                 ),
                 2.5e-3,
             ),
-            (
-                "viewmats",
-                torch.nn.Parameter(
-                    viewmats, requires_grad=self.cfg.learnable_params["viewmats"]
-                ),
-                0.0,
-            ),
-            (
-                "Ks",
-                torch.nn.Parameter(Ks, requires_grad=self.cfg.learnable_params["Ks"]),
-                0.0,
-            ),
+            # (  #  @Rok comented out as this lead to a problem with the sanity check.
+            #     "viewmats",
+            #     torch.nn.Parameter(
+            #         viewmats, requires_grad=self.cfg.learnable_params["viewmats"]
+            #     ),
+            #     0.0,
+            # ),
+            # (
+            #     "Ks",
+            #     torch.nn.Parameter(Ks, requires_grad=self.cfg.learnable_params["Ks"]),
+            #     0.0,
+            # ),
         ]
 
         # Option: Feature-based dimensionality, where color is spherical harmonics
@@ -237,6 +237,7 @@ class GaussianImageTrainer:
         self.splats = torch.nn.ParameterDict({n: v for n, v, _ in params}).to(
             self.device
         )
+        
         self.optimizers = {
             name: torch.optim.Adam(
                 [
@@ -262,7 +263,7 @@ class GaussianImageTrainer:
         Trains the Gaussians to fit the ground truth image.
         """
         cfg = self.cfg
-        cfg.save(self.logs_path / "config.json")
+        cfg.save(self.logs_path / "config.json")  # @Rok changed method
         image = self.image
         save_tensor(image, self.results_path / "original.png")
 
@@ -282,8 +283,12 @@ class GaussianImageTrainer:
             scales = self.splats["scales"]
             opacities = torch.sigmoid(self.splats["opacities"])
             colors = torch.sigmoid(self.splats["colors"])
-            viewmats = self.splats["viewmats"]
-            Ks = self.splats["Ks"]
+
+            # @Rok changed this here to use the attributes defined above as using params caused an error in the sanity check
+            # viewmats = self.splats["viewmats"]
+            viewmats = self.viewmats
+            # Ks = self.splats["Ks"]
+            Ks = self.Ks
 
             start = time.time()
 
@@ -305,8 +310,8 @@ class GaussianImageTrainer:
                     colors=colors,
                     viewmats=viewmats,
                     Ks=Ks,
-                    W=self.W,
-                    H=self.H,
+                    width=self.W,  # @ Rok used correct parameter name
+                    height=self.H,
                     packed=False,
                 )
             elif self.model_type == "2dgs-inria":

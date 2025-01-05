@@ -3,18 +3,23 @@ import time
 import torch
 import numpy as np
 from pathlib import Path
+from gsplat.optimizers import SelectiveAdam
 from configs import get_progress_bar, Config
 from torch.utils.tensorboard import SummaryWriter
+from references import slice, total_variation_loss, BilateralGrid
 from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 from torchmetrics import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
 from gsplat import (
     rasterization,
     rasterization_2dgs,
     rasterization_2dgs_inria_wrapper,
+    DefaultStrategy,
     MCMCStrategy,
 )
 from utils import (
     append_log,
+    compute_knn_distances,
+    convert_rgb_to_sh,
     save_gif,
     set_random_seed,
     save_splat,
@@ -66,18 +71,41 @@ class GaussianImageTrainer:
         print("Model initialized. Number of Gaussians:", self.num_points)
 
         # Densification strategy
-        # TODO: This should be optional
-        self.strategy = MCMCStrategy(
-            refine_start_iter=10,
-            refine_every=10,
-            min_opacity=0.001,
-        )
-        self.strategy.check_sanity(self.splats, self.optimizers)
-        self.strategy_state = self.strategy.initialize_state()
+        if not cfg.group_optimization:
+            if cfg.strategy == "default":
+                self.strategy = DefaultStrategy(
+                    refine_start_iter=250,
+                    refine_every=50,
+                    key_for_gradient=(
+                        "means2d" if cfg.model_type == "2dgs" else "gradient_2dgs"
+                    ),
+                )
+            elif cfg.strategy == "mcmc":
+                self.strategy = MCMCStrategy(
+                    refine_start_iter=10,
+                    refine_every=10,
+                    min_opacity=0.001,
+                )
+            self.strategy.check_sanity(self.splats, self.optimizers)
+            self.strategy_state = self.strategy.initialize_state()
 
         # Option: Add camera pose optimization (pose_opt)
         # Option: Add appearance optimization (app_opt)
-        # Option: Add support for Bilateral grid
+
+        if cfg.bilateral_grid:
+            self.bilateral_grids = BilateralGrid(
+                len(self.trainset),
+                grid_X=4,
+                grid_Y=4,
+                grid_W=2,
+            ).to(self.device)
+            self.bil_grid_optimizers = [
+                torch.optim.Adam(
+                    self.bilateral_grids.parameters(),
+                    lr=2e-3 * math.sqrt(cfg.batch_size),
+                    eps=1e-15,
+                ),
+            ]
 
         # Loss and metrics functions
         self.l1 = torch.nn.L1Loss()
@@ -92,105 +120,47 @@ class GaussianImageTrainer:
         """
         Initializes Gaussian splats based on the initialization strategy.
         """
+        cfg = self.cfg
         if self.init_type == "random":
             # Random initialization
-            means = self.cfg.extent * (
+            means = cfg.extent * (
                 torch.rand(self.num_points, 3, device=self.device) - 0.5
             )
             quats = torch.rand(self.num_points, 4, device=self.device)
-            scales = (
-                torch.rand(self.num_points, 3, device=self.device) * self.cfg.init_scale
-            )
+            scales = torch.rand(self.num_points, 3, device=self.device) * cfg.init_scale
             opacities = (
-                torch.ones(self.num_points, device=self.device) * self.cfg.init_opacity
-            )
-            colors = torch.rand(self.num_points, 3, device=self.device)
-            viewmats = torch.tensor(
-                [
-                    [1.0, 0.0, 0.0, 0.0],
-                    [0.0, 1.0, 0.0, 0.0],
-                    [0.0, 0.0, 1.0, 8.0],
-                    [0.0, 0.0, 0.0, 1.0],
-                ],
-                device=self.device,
-            )
-            focal = 0.5 * float(self.W) / math.tan(0.5 * math.pi / 2.0)
-            Ks = torch.tensor(
-                [
-                    [focal, 0, self.W / 2],
-                    [0, focal, self.H / 2],
-                    [0, 0, 1],
-                ],
-                device=self.device,
+                torch.ones(self.num_points, device=self.device) * cfg.init_opacity
             )
 
         elif self.init_type == "grid":
-            # Option: Grid initialization
-            # TODO: means should not be learnable
-            square_root = round(math.sqrt(self.num_points))
-            if square_root**2 != self.num_points:
-                raise ValueError(
-                    f"When init_type is grid, num_points must be a perfect square. Received num_points={self.num_points}."
-                )
+            # Grid initialization
+            square_root = int(math.sqrt(self.num_points))
+            if square_root * square_root != self.num_points:
+                raise ValueError("num_points must be a perfect square.")
+
+            cfg.learnable_params["means"] = False
 
             grid_size = square_root
             bd_min, bd_max = (-1.0, 1.0)
 
-            # 2D Grid Initialization (z = 0)
             grid_x = torch.linspace(bd_min, bd_max, grid_size, device=self.device)
             grid_y = torch.linspace(bd_min, bd_max, grid_size, device=self.device)
+            grid_z = torch.zeros(
+                (self.num_points, 1), device=self.device
+            )  # 2D, z is fixed to 0
 
             mesh = torch.meshgrid(grid_x, grid_y, indexing="ij")
             grid_points_2d = torch.stack(mesh, dim=-1).reshape(-1, 2)
-
-            # Append a fixed z-coordinate (e.g., z = 0)
-            fixed_z = torch.zeros((self.num_points, 1), device=self.device)
-            self.means = torch.cat([grid_points_2d, fixed_z], dim=1)
-
-            # TODO: Actually, only the means should change according to the init_type to avoid repeating the following block:
+            means = torch.cat([grid_points_2d, grid_z], dim=1)
             quats = torch.rand(self.num_points, 4, device=self.device)
-            u = torch.rand(self.num_points, 1, device=self.device)
-            v = torch.rand(self.num_points, 1, device=self.device)
-            w = torch.rand(self.num_points, 1, device=self.device)
-
-            self.quats = torch.cat(
-                [
-                    torch.sqrt(1.0 - u) * torch.sin(2.0 * math.pi * v),
-                    torch.sqrt(1.0 - u) * torch.cos(2.0 * math.pi * v),
-                    torch.sqrt(u) * torch.sin(2.0 * math.pi * w),
-                    torch.sqrt(u) * torch.cos(2.0 * math.pi * w),
-                ],
-                -1,
-            )
-            scales = (
-                torch.rand(self.num_points, 3, device=self.device) * self.cfg.init_scale
-            )
+            scales = torch.rand(self.num_points, 3, device=self.device) * cfg.init_scale
             opacities = (
-                torch.ones(self.num_points, device=self.device) * self.cfg.init_opacity
-            )
-            colors = torch.rand(self.num_points, 3, device=self.device)
-            viewmats = torch.tensor(
-                [
-                    [1.0, 0.0, 0.0, 0.0],
-                    [0.0, 1.0, 0.0, 0.0],
-                    [0.0, 0.0, 1.0, 8.0],
-                    [0.0, 0.0, 0.0, 1.0],
-                ],
-                device=self.device,
-            )
-            focal = 0.5 * float(self.W) / math.tan(0.5 * math.pi / 2.0)
-            Ks = torch.tensor(
-                [
-                    [focal, 0, self.W / 2],
-                    [0, focal, self.H / 2],
-                    [0, 0, 1],
-                ],
-                device=self.device,
+                torch.ones(self.num_points, device=self.device) * cfg.init_opacity
             )
 
         elif self.init_type == "knn":
-            # Option: KNN-based initialization
-            means = self.cfg.extent * (
+            # KNN-based initialization
+            means = cfg.extent * (
                 torch.rand(self.num_points, 3, device=self.device) * 2 - 1
             )
 
@@ -209,51 +179,41 @@ class GaussianImageTrainer:
             )
 
             # Initialize the GS size to be the average dist of the 3 nearest neighbors
-            # TODO: add knn util
-            dist2_avg = (knn(means, 4)[:, 1:] ** 2).mean(dim=-1)
+            dist2_avg = (compute_knn_distances(means, 4)[:, 1:] ** 2).mean(dim=-1)
             dist_avg = torch.sqrt(dist2_avg)
             scales = (
-                torch.log(dist_avg * self.cfg.init_scale, device=self.device)
+                torch.log(dist_avg * cfg.init_scale, device=self.device)
                 .unsqueeze(-1)
                 .repeat(1, 3)
             )
 
             opacities = torch.logit(
-                torch.full((self.num_points,), self.cfg.init_opacity),
-                device=self.device,
-            )
-
-            # Color is SH coefficient
-            colors = torch.rand(self.num_points, 3, device=self.device)
-            # TODO: Add option for color as SH coefficient (sh degree is defined)
-            # colors = torch.zeros(
-            #     (self.num_points, (self.cfg.s + 1) ** 2, 3)
-            # )  # [N, K, 3]
-            # colors[:, 0, :] = rgb_to_sh(rgbs)
-            # params.append(("sh0", torch.nn.Parameter(colors[:, :1, :]), 2.5e-3))
-            # params.append(("shN", torch.nn.Parameter(colors[:, 1:, :]), 2.5e-3 / 20))
-
-            viewmats = torch.tensor(
-                [
-                    [1.0, 0.0, 0.0, 0.0],
-                    [0.0, 1.0, 0.0, 0.0],
-                    [0.0, 0.0, 1.0, 8.0],
-                    [0.0, 0.0, 0.0, 1.0],
-                ],
-                device=self.device,
-            )
-            focal = 0.5 * float(self.W) / math.tan(0.5 * math.pi / 2.0)
-            Ks = torch.tensor(
-                [
-                    [focal, 0, self.W / 2],
-                    [0, focal, self.H / 2],
-                    [0, 0, 1],
-                ],
+                torch.full((self.num_points,), cfg.init_opacity),
                 device=self.device,
             )
 
         else:
             raise ValueError(f"Unsupported initialization type: {self.init_type}")
+
+        colors = torch.rand(self.num_points, 3, device=self.device)
+        viewmats = torch.tensor(
+            [
+                [1.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 8.0],
+                [0.0, 0.0, 0.0, 1.0],
+            ],
+            device=self.device,
+        )
+        focal = 0.5 * float(self.W) / math.tan(0.5 * math.pi / 2.0)
+        Ks = torch.tensor(
+            [
+                [focal, 0, self.W / 2],
+                [0, focal, self.H / 2],
+                [0, 0, 1],
+            ],
+            device=self.device,
+        )
 
         # Parameters (name, values, and learning rate)
         params = [
@@ -264,36 +224,34 @@ class GaussianImageTrainer:
                     requires_grad=(
                         False
                         if self.init_type == "grid"
-                        else self.cfg.learnable_params["means"]
+                        else cfg.learnable_params["means"]
                     ),
                 ),
                 1.6e-4,
             ),
             (
                 "quats",
-                torch.nn.Parameter(
-                    quats, requires_grad=self.cfg.learnable_params["quats"]
-                ),
+                torch.nn.Parameter(quats, requires_grad=cfg.learnable_params["quats"]),
                 1e-3,
             ),
             (
                 "scales",
                 torch.nn.Parameter(
-                    scales, requires_grad=self.cfg.learnable_params["scales"]
+                    scales, requires_grad=cfg.learnable_params["scales"]
                 ),
                 5e-3,
             ),
             (
                 "opacities",
                 torch.nn.Parameter(
-                    opacities, requires_grad=self.cfg.learnable_params["opacities"]
+                    opacities, requires_grad=cfg.learnable_params["opacities"]
                 ),
                 5e-2,
             ),
             (
                 "colors",
                 torch.nn.Parameter(
-                    colors, requires_grad=self.cfg.learnable_params["colors"]
+                    colors, requires_grad=cfg.learnable_params["colors"]
                 ),
                 2.5e-3,
             ),
@@ -309,7 +267,32 @@ class GaussianImageTrainer:
             ),
         ]
 
-        # Option: Use sparse adam or selective adam
+        # Color is spherical harmonics coefficients
+        if cfg.sh_degree is not None:
+            params = [param for param in params if param[0] != "colors"]
+            rgbs = torch.rand(self.num_points, 3, device=self.device)
+            colors = torch.zeros((self.num_points, (cfg.s + 1) ** 2, 3))
+            colors[:, 0, :] = convert_rgb_to_sh(rgbs)
+            params.append(
+                (
+                    "sh0",
+                    torch.nn.Parameter(
+                        colors[:, :1, :],
+                        requires_grad=cfg.learnable_params["colors"],
+                    ),
+                    2.5e-3,
+                )
+            )
+            params.append(
+                (
+                    "shN",
+                    torch.nn.Parameter(
+                        colors[:, 1:, :],
+                        requires_grad=cfg.learnable_params["colors"],
+                    ),
+                    2.5e-3 / 20,
+                )
+            )
 
         self.splats = torch.nn.ParameterDict(
             {name: value for name, value, _ in params if value.requires_grad}
@@ -318,24 +301,56 @@ class GaussianImageTrainer:
             {name: value for name, value, _ in params if not value.requires_grad}
         ).to(self.device)
 
-        # TODO: Option for only one joint optimizer
-        self.optimizers = {
-            name: torch.optim.Adam(
-                params=[self.splats[name]],
-                lr=lr * math.sqrt(self.cfg.batch_size),
-                eps=1e-15 / math.sqrt(self.cfg.batch_size),
-                betas=(
-                    1 - self.cfg.batch_size * (1 - 0.9),
-                    1 - self.cfg.batch_size * (1 - 0.999),
-                ),
+        if cfg.sparse_gradient:
+            optimizer = torch.optim.SparseAdam
+        elif cfg.selective_adam:
+            optimizer = SelectiveAdam
+        else:
+            optimizer = torch.optim.Adam
+
+        if cfg.group_optimization:
+            self.optimizers = {
+                "optimizer": optimizer(
+                    [values for _, values, _ in params if values.requires_grad],
+                    cfg.learning_rate,
+                )
+            }
+            self.schedulers = []
+        else:
+            self.optimizers = {
+                name: optimizer(
+                    params=[self.splats[name]],
+                    lr=lr * math.sqrt(cfg.batch_size),
+                    eps=1e-15 / math.sqrt(cfg.batch_size),
+                    betas=(
+                        1 - cfg.batch_size * (1 - 0.9),
+                        1 - cfg.batch_size * (1 - 0.999),
+                    ),
+                )
+                for name, values, lr in params
+                if values.requires_grad
+            }
+            self.schedulers = [
+                torch.optim.lr_scheduler.ExponentialLR(
+                    self.optimizers["means"], gamma=0.01 ** (1.0 / cfg.max_steps)
+                )
+            ]  # Optimize learning rate for means only
+
+        if cfg.bilateral_grid:
+            self.schedulers.append(
+                torch.optim.lr_scheduler.ChainedScheduler(
+                    [
+                        torch.optim.lr_scheduler.LinearLR(
+                            4,
+                            start_factor=0.01,
+                            total_iters=100,
+                        ),
+                        torch.optim.lr_scheduler.ExponentialLR(
+                            4, gamma=0.01 ** (1.0 / cfg.max_steps)
+                        ),
+                    ]
+                )
             )
-            for name, values, lr in params
-            if values.requires_grad
-        }
-        # TODO - fix reference here to (optimizers[0])
-        self.scheduler = torch.optim.lr_scheduler.ExponentialLR(
-            self.optimizers["means"], gamma=0.01 ** (1.0 / self.cfg.max_steps)
-        )  # Optimize learning rate for means only
 
     def train(
         self,
@@ -378,11 +393,20 @@ class GaussianImageTrainer:
                 if "opacities" in self.splats
                 else self.splat_features["opacities"]
             )
-            colors = torch.sigmoid(
-                self.splats["colors"]
-                if "colors" in self.splats
-                else self.splat_features["colors"]
-            )
+            if cfg.sh_degree is not None:
+                colors = torch.cat(
+                    [
+                        self.splats["sh0"],
+                        self.splats["shN"],
+                    ],
+                    dim=1,
+                )
+            else:
+                colors = torch.sigmoid(
+                    self.splats["colors"]
+                    if "colors" in self.splats
+                    else self.splat_features["colors"]
+                )
             viewmats = self.splat_features["viewmats"][None]
             Ks = self.splat_features["Ks"][None]
 
@@ -390,7 +414,15 @@ class GaussianImageTrainer:
 
             # Rasterize the splats
             if self.model_type == "2dgs":
-                (render_colors, _, _, _, _, _, info) = rasterization_2dgs(
+                (
+                    render_colors,
+                    render_alphas,
+                    render_normals,
+                    surf_normals,
+                    render_distort,
+                    _,
+                    info,
+                ) = rasterization_2dgs(
                     means=means,
                     quats=quats,
                     scales=scales,
@@ -400,7 +432,9 @@ class GaussianImageTrainer:
                     Ks=Ks,
                     width=self.W,
                     height=self.H,
-                    packed=False,
+                    distloss=cfg.distortion_loss_weight > 0.0,
+                    sparse_grad=cfg.sparse_gradient,
+                    packed=False or cfg.sparse_gradient,
                 )
             elif self.model_type == "2dgs-inria":
                 renders, info = rasterization_2dgs_inria_wrapper(
@@ -413,12 +447,14 @@ class GaussianImageTrainer:
                     Ks=Ks,
                     width=self.W,
                     height=self.H,
-                    packed=False,
+                    distloss=cfg.distortion_loss_weight > 0.0,
+                    sparse_grad=cfg.sparse_gradient,
+                    packed=False or cfg.sparse_gradient,
                 )
-                render_colors, _ = renders
-                _ = info["normals_rend"]
-                _ = info["normals_surf"]
-                _ = info["render_distloss"]
+                render_colors, render_alphas = renders
+                render_normals = info["normals_rend"]
+                surf_normals = info["normals_surf"]
+                render_distort = info["render_distloss"]
                 _ = render_colors[..., 3]
             elif self.model_type == "3dgs":
                 render_colors, _, info = rasterization(
@@ -431,7 +467,8 @@ class GaussianImageTrainer:
                     Ks=Ks,
                     width=self.W,
                     height=self.H,
-                    packed=False,
+                    sparse_grad=cfg.sparse_gradient,
+                    packed=False or cfg.sparse_gradient,
                 )
             else:
                 raise ValueError(f"Unsupported model type: {self.model_type}")
@@ -443,6 +480,29 @@ class GaussianImageTrainer:
             if render_colors.shape[-1] == 4:
                 render_colors = render_colors[..., :3]
 
+            if cfg.bilateral_grid:
+                grid_y, grid_x = torch.meshgrid(
+                    (torch.arange(self.H, device=self.device) + 0.5) / self.H,
+                    (torch.arange(self.W, device=self.device) + 0.5) / self.W,
+                    indexing="ij",
+                )
+                grid_xy = torch.stack([grid_x, grid_y], dim=-1).unsqueeze(0)
+                colors = slice(
+                    self.bilateral_grids,
+                    grid_xy,
+                    colors,
+                    torch.zeros((self.H, self.W, 1)),
+                )["rgb"]
+
+            if not cfg.group_optimization and cfg.strategy == "default":
+                self.strategy.step_pre_backward(
+                    params=self.splats,
+                    optimizers=self.optimizers,
+                    state=self.strategy_state,
+                    step=step,
+                    info=info,
+                )
+
             # Compute loss
             l1_loss = self.l1(render_colors, image)
             mse_loss = self.mse(render_colors, image)
@@ -451,15 +511,46 @@ class GaussianImageTrainer:
                 image.permute(2, 0, 1).unsqueeze(0),
             )  # BxCxHxW
 
-            # Option: Add depth loss
-            # Option: Add normal loss
-            # Option: Add distortion loss
-
             # Compute total loss
-            # TODO: put a weight on each loss
-            loss = (l1_loss + mse_loss + ssim_loss) / 3.0
+            loss = np.dot([l1_loss, mse_loss, ssim_loss], cfg.loss_weights)
 
-            # Option: Add opacity and scale regularization
+            # Option: Add depth loss
+
+            if cfg.normal_loss_weight > 0.0 and self.model_type != "3dgs":
+                loss_weight = (
+                    cfg.normal_loss_weight if step > cfg.max_steps // 2 else 0.0
+                )
+                normals = render_normals.squeeze(0).permute((2, 0, 1))
+                surf_normals *= render_alphas.squeeze(0).detach()
+                if len(surf_normals.shape) == 4:
+                    surf_normals = surf_normals.squeeze(0)
+                surf_normals = surf_normals.permute((2, 0, 1))
+                normal_error = (1 - (normals * surf_normals).sum(dim=0))[None]
+                normal_loss = loss_weight * normal_error.mean()
+                loss += normal_loss
+
+            if cfg.distortion_loss_weight > 0.0:
+                loss_weight = (
+                    cfg.distortion_loss_weight if step > cfg.max_steps // 2 else 0.0
+                )
+                distortion_loss = render_distort.mean()
+                loss += loss_weight * distortion_loss
+
+            if cfg.bilateral_grid:
+                tv_loss = 10 * total_variation_loss(self.bilateral_grids.grids)
+                loss += tv_loss
+
+            if cfg.scale_reg > 0.0:
+                loss = (
+                    loss
+                    + cfg.scale_reg * torch.abs(torch.exp(self.splats["scales"])).mean()
+                )
+            if cfg.opacity_reg > 0.0:
+                loss = (
+                    loss
+                    + cfg.opacity_reg
+                    * torch.abs(torch.sigmoid(self.splats["opacities"])).mean()
+                )
 
             # Backward step
             for optimizer in self.optimizers.values():
@@ -469,20 +560,55 @@ class GaussianImageTrainer:
             torch.cuda.synchronize()
             times[1] += time.time() - start
 
-            # TODO: this is optional
-            self.strategy.step_post_backward(
-                params=self.splats,
-                optimizers=self.optimizers,
-                state=self.strategy_state,
-                step=step,
-                info=info,
-                lr=self.optimizers["means"].param_groups[0]["lr"],
-            )
+            # Turn gradients into sparse gradients
+            if cfg.sparse_gradient:
+                gaussian_ids = info["gaussian_ids"]
+                for k in self.splats.keys():
+                    grad = self.splats[k].grad
+                    if grad is None or grad.is_sparse:
+                        continue
+                    self.splats[k].grad = torch.sparse_coo_tensor(
+                        indices=gaussian_ids[None],
+                        values=grad[gaussian_ids],
+                        size=self.splats[k].size(),
+                        is_coalesced=len(Ks) == 1,
+                    )
+
+            if cfg.selective_adam:
+                if cfg.sparse_gradient:
+                    visibility_mask = torch.zeros_like(
+                        self.splats["opacities"], dtype=bool
+                    )
+                    visibility_mask.scatter_(0, info["gaussian_ids"], 1)
+                else:
+                    visibility_mask = (info["radii"] > 0).any(0)
 
             # Optimize the parameters and update the learning rate
             for optimizer in self.optimizers.values():
-                optimizer.step()
-            self.scheduler.step()
+                (
+                    optimizer.step()
+                    if cfg.selective_adam
+                    else optimizer.step(visibility_mask)
+                )
+            for scheduler in self.schedulers:
+                scheduler.step()
+
+            if not cfg.group_optimization:
+                common_args = {
+                    "params": self.splats,
+                    "optimizers": self.optimizers,
+                    "state": self.strategy_state,
+                    "step": step,
+                    "info": info,
+                }
+
+                if cfg.strategy == "default":
+                    self.strategy.step_post_backward(
+                        **common_args, packed=False or cfg.sparse_gradient
+                    )
+                elif cfg.strategy == "mcmc":
+                    lr = self.optimizers["means"].param_groups[0]["lr"]
+                    self.strategy.step_post_backward(**common_args, lr=lr)
 
             # Save logs and results
             if step % 5 == 0:
@@ -502,6 +628,10 @@ class GaussianImageTrainer:
                 self.writer.add_scalar("Loss/L1", l1_loss.item(), step)
                 self.writer.add_scalar("Loss/MSE", mse_loss.item(), step)
                 self.writer.add_scalar("Loss/SSIM", ssim_loss.item(), step)
+                if cfg.normal_loss_weight > 0.0:
+                    self.writer.add_scalar("Loss/Normal", normal_loss.item(), step)
+                if cfg.bilateral_grid:
+                    self.writer.add_scalar("Loss/TV", tv_loss.item(), step)
                 self.writer.add_scalar(
                     "LearningRate", self.optimizers["means"].param_groups[0]["lr"], step
                 )
@@ -528,18 +658,8 @@ class GaussianImageTrainer:
         save_tensor(render_colors, self.results_path / "final.png")
         print(f"Final loss: {loss.item()}")
         print(f"Total Time: Rasterization: {times[0]:.3f}s, Backward: {times[1]:.3f}s")
-        # TODO - save the final splat (data_path)
+        save_splat(self.splats, self.results_path / "splat_final.pt")
+        save_splat_hdf5(self.splats, self.results_path / "splat_final.h5")
 
 
 # TODO: create eval method
-
-# TODOs:
-# - check with 3 files and add discrepances
-# - strategy is optional + learn all together!
-# - implement grid and knn initialization
-# - implement evaluation method
-# - implement depth, normal, and distortion losses
-# - add camera pose and appearance optimization
-# - do a cleanup (remove .bak files, and experiments ipynb, slurm/logs, other useless logs + results)
-# - write code for experiment and run it
-# - add https://github.com/yuehaowang/bilarf submodule

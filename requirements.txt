@@ -7,4 +7,5 @@ ipykernel
 matplotlib
 tensorboard
 torchvision
+scikit-learn
 torchmetrics

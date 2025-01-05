@@ -25,6 +25,9 @@ class Config:
     max_steps: int = 1_000
     learning_rate: float = 1e-3  # Learning rate (for Adam optimizer)
 
+    # Degree of spherical harmonics
+    sh_degree: Optional[int] = None  # 3
+
     # Model type and rasterization
     model_type: Literal["2dgs", "2dgs-inria", "3dgs"] = "2dgs"
 

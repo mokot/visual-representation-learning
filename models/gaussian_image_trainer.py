@@ -2,10 +2,11 @@ import math
 import time
 import torch
 import numpy as np
-import torchmetrics
 from pathlib import Path
 from configs import get_progress_bar, Config
 from torch.utils.tensorboard import SummaryWriter
+from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
+from torchmetrics import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
 from gsplat import (
     rasterization,
     rasterization_2dgs,
@@ -15,10 +16,10 @@ from gsplat import (
 from utils import (
     append_log,
     save_gif,
+    set_random_seed,
     save_splat,
     save_splat_hdf5,
     save_tensor,
-    set_random_seed,
 )
 
 
@@ -65,28 +66,26 @@ class GaussianImageTrainer:
         print("Model initialized. Number of Gaussians:", self.num_points)
 
         # Densification strategy
+        # TODO: This should be optional
         self.strategy = MCMCStrategy(
-            refine_start_iter=50,
+            refine_start_iter=10,
             refine_every=10,
             min_opacity=0.001,
         )
         self.strategy.check_sanity(self.splats, self.optimizers)
         self.strategy_state = self.strategy.initialize_state()
 
-        # Option: Add camera pose optimization
-        # Option: Add appearance optimization
+        # Option: Add camera pose optimization (pose_opt)
+        # Option: Add appearance optimization (app_opt)
+        # Option: Add support for Bilateral grid
 
         # Loss and metrics functions
         self.l1 = torch.nn.L1Loss()
         self.mse = torch.nn.MSELoss()
-        self.ssim = torchmetrics.image.StructuralSimilarityIndexMeasure(
-            data_range=1.0
-        ).to(self.device)
-        self.psnr = torchmetrics.image.PeakSignalNoiseRatio(data_range=1.0).to(
-            self.device
-        )
-        self.lpips = torchmetrics.image.lpip.LearnedPerceptualImagePatchSimilarity(
-            normalize=True
+        self.ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(self.device)
+        self.psnr = PeakSignalNoiseRatio(data_range=1.0).to(self.device)
+        self.lpips = LearnedPerceptualImagePatchSimilarity(
+            net_type="alex", normalize=True
         ).to(self.device)
 
     def init_gaussians(self) -> None:
@@ -150,6 +149,19 @@ class GaussianImageTrainer:
 
             # TODO: Actually, only the means should change according to the init_type to avoid repeating the following block:
             quats = torch.rand(self.num_points, 4, device=self.device)
+            u = torch.rand(self.num_points, 1, device=self.device)
+            v = torch.rand(self.num_points, 1, device=self.device)
+            w = torch.rand(self.num_points, 1, device=self.device)
+
+            self.quats = torch.cat(
+                [
+                    torch.sqrt(1.0 - u) * torch.sin(2.0 * math.pi * v),
+                    torch.sqrt(1.0 - u) * torch.cos(2.0 * math.pi * v),
+                    torch.sqrt(u) * torch.sin(2.0 * math.pi * w),
+                    torch.sqrt(u) * torch.cos(2.0 * math.pi * w),
+                ],
+                -1,
+            )
             scales = (
                 torch.rand(self.num_points, 3, device=self.device) * self.cfg.init_scale
             )
@@ -178,7 +190,68 @@ class GaussianImageTrainer:
 
         elif self.init_type == "knn":
             # Option: KNN-based initialization
-            pass
+            means = self.cfg.extent * (
+                torch.rand(self.num_points, 3, device=self.device) * 2 - 1
+            )
+
+            # Predefined rotations
+            u = torch.rand(self.num_points, 1, device=self.device)
+            v = torch.rand(self.num_points, 1, device=self.device)
+            w = torch.rand(self.num_points, 1, device=self.device)
+            quats = torch.cat(
+                [
+                    torch.sqrt(1.0 - u) * torch.sin(2.0 * math.pi * v),
+                    torch.sqrt(1.0 - u) * torch.cos(2.0 * math.pi * v),
+                    torch.sqrt(u) * torch.sin(2.0 * math.pi * w),
+                    torch.sqrt(u) * torch.cos(2.0 * math.pi * w),
+                ],
+                -1,
+            )
+
+            # Initialize the GS size to be the average dist of the 3 nearest neighbors
+            # TODO: add knn util
+            dist2_avg = (knn(means, 4)[:, 1:] ** 2).mean(dim=-1)
+            dist_avg = torch.sqrt(dist2_avg)
+            scales = (
+                torch.log(dist_avg * self.cfg.init_scale, device=self.device)
+                .unsqueeze(-1)
+                .repeat(1, 3)
+            )
+
+            opacities = torch.logit(
+                torch.full((self.num_points,), self.cfg.init_opacity),
+                device=self.device,
+            )
+
+            # Color is SH coefficient
+            colors = torch.rand(self.num_points, 3, device=self.device)
+            # TODO: Add option for color as SH coefficient (sh degree is defined)
+            # colors = torch.zeros(
+            #     (self.num_points, (self.cfg.s + 1) ** 2, 3)
+            # )  # [N, K, 3]
+            # colors[:, 0, :] = rgb_to_sh(rgbs)
+            # params.append(("sh0", torch.nn.Parameter(colors[:, :1, :]), 2.5e-3))
+            # params.append(("shN", torch.nn.Parameter(colors[:, 1:, :]), 2.5e-3 / 20))
+
+            viewmats = torch.tensor(
+                [
+                    [1.0, 0.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0, 0.0],
+                    [0.0, 0.0, 1.0, 8.0],
+                    [0.0, 0.0, 0.0, 1.0],
+                ],
+                device=self.device,
+            )
+            focal = 0.5 * float(self.W) / math.tan(0.5 * math.pi / 2.0)
+            Ks = torch.tensor(
+                [
+                    [focal, 0, self.W / 2],
+                    [0, focal, self.H / 2],
+                    [0, 0, 1],
+                ],
+                device=self.device,
+            )
+
         else:
             raise ValueError(f"Unsupported initialization type: {self.init_type}")
 
@@ -236,7 +309,7 @@ class GaussianImageTrainer:
             ),
         ]
 
-        # Option: Feature-based dimensionality, where color is spherical harmonics
+        # Option: Use sparse adam or selective adam
 
         self.splats = torch.nn.ParameterDict(
             {name: value for name, value, _ in params if value.requires_grad}
@@ -245,6 +318,7 @@ class GaussianImageTrainer:
             {name: value for name, value, _ in params if not value.requires_grad}
         ).to(self.device)
 
+        # TODO: Option for only one joint optimizer
         self.optimizers = {
             name: torch.optim.Adam(
                 params=[self.splats[name]],
@@ -258,6 +332,7 @@ class GaussianImageTrainer:
             for name, values, lr in params
             if values.requires_grad
         }
+        # TODO - fix reference here to (optimizers[0])
         self.scheduler = torch.optim.lr_scheduler.ExponentialLR(
             self.optimizers["means"], gamma=0.01 ** (1.0 / self.cfg.max_steps)
         )  # Optimize learning rate for means only
@@ -381,7 +456,10 @@ class GaussianImageTrainer:
             # Option: Add distortion loss
 
             # Compute total loss
-            loss = mse_loss
+            # TODO: put a weight on each loss
+            loss = (l1_loss + mse_loss + ssim_loss) / 3.0
+
+            # Option: Add opacity and scale regularization
 
             # Backward step
             for optimizer in self.optimizers.values():
@@ -391,6 +469,7 @@ class GaussianImageTrainer:
             torch.cuda.synchronize()
             times[1] += time.time() - start
 
+            # TODO: this is optional
             self.strategy.step_post_backward(
                 params=self.splats,
                 optimizers=self.optimizers,
@@ -442,11 +521,25 @@ class GaussianImageTrainer:
                 save_splat(self.splats, self.results_path / f"splat_{step:05d}.pt")
                 save_splat_hdf5(self.splats, self.results_path / f"splat_{step:05d}.h5")
 
+            # Option: Early stopping (based on validation)
+
         # Save the final results
         save_gif(frames, self.results_path / "animation.gif")
         save_tensor(render_colors, self.results_path / "final.png")
         print(f"Final loss: {loss.item()}")
         print(f"Total Time: Rasterization: {times[0]:.3f}s, Backward: {times[1]:.3f}s")
+        # TODO - save the final splat (data_path)
 
 
 # TODO: create eval method
+
+# TODOs:
+# - check with 3 files and add discrepances
+# - strategy is optional + learn all together!
+# - implement grid and knn initialization
+# - implement evaluation method
+# - implement depth, normal, and distortion losses
+# - add camera pose and appearance optimization
+# - do a cleanup (remove .bak files, and experiments ipynb, slurm/logs, other useless logs + results)
+# - write code for experiment and run it
+# - add https://github.com/yuehaowang/bilarf submodule

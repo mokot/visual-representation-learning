@@ -268,7 +268,7 @@ class GaussianImageTrainer:
         ]
 
         # Color is spherical harmonics coefficients
-        if cfg.sh_degree is not None:
+        if cfg.sh_degree:
             params = [param for param in params if param[0] != "colors"]
             rgbs = torch.rand(self.num_points, 3, device=self.device)
             colors = torch.zeros((self.num_points, (cfg.s + 1) ** 2, 3))
@@ -393,7 +393,7 @@ class GaussianImageTrainer:
                 if "opacities" in self.splats
                 else self.splat_features["opacities"]
             )
-            if cfg.sh_degree is not None:
+            if cfg.sh_degree:
                 colors = torch.cat(
                     [
                         self.splats["sh0"],
@@ -432,7 +432,7 @@ class GaussianImageTrainer:
                     Ks=Ks,
                     width=self.W,
                     height=self.H,
-                    distloss=cfg.distortion_loss_weight > 0.0,
+                    distloss=cfg.distortion_loss_weight,
                     sparse_grad=cfg.sparse_gradient,
                     packed=False or cfg.sparse_gradient,
                 )
@@ -447,7 +447,7 @@ class GaussianImageTrainer:
                     Ks=Ks,
                     width=self.W,
                     height=self.H,
-                    distloss=cfg.distortion_loss_weight > 0.0,
+                    distloss=cfg.distortion_loss_weight,
                     sparse_grad=cfg.sparse_gradient,
                     packed=False or cfg.sparse_gradient,
                 )
@@ -516,7 +516,7 @@ class GaussianImageTrainer:
 
             # Option: Add depth loss
 
-            if cfg.normal_loss_weight > 0.0 and self.model_type != "3dgs":
+            if cfg.normal_loss_weight and self.model_type != "3dgs":
                 loss_weight = (
                     cfg.normal_loss_weight if step > cfg.max_steps // 2 else 0.0
                 )
@@ -529,7 +529,7 @@ class GaussianImageTrainer:
                 normal_loss = loss_weight * normal_error.mean()
                 loss += normal_loss
 
-            if cfg.distortion_loss_weight > 0.0:
+            if cfg.distortion_loss_weight and self.model_type != "3dgs":
                 loss_weight = (
                     cfg.distortion_loss_weight if step > cfg.max_steps // 2 else 0.0
                 )
@@ -540,12 +540,12 @@ class GaussianImageTrainer:
                 tv_loss = 10 * total_variation_loss(self.bilateral_grids.grids)
                 loss += tv_loss
 
-            if cfg.scale_reg > 0.0:
+            if cfg.scale_reg:
                 loss = (
                     loss
                     + cfg.scale_reg * torch.abs(torch.exp(self.splats["scales"])).mean()
                 )
-            if cfg.opacity_reg > 0.0:
+            if cfg.opacity_reg:
                 loss = (
                     loss
                     + cfg.opacity_reg
@@ -628,8 +628,12 @@ class GaussianImageTrainer:
                 self.writer.add_scalar("Loss/L1", l1_loss.item(), step)
                 self.writer.add_scalar("Loss/MSE", mse_loss.item(), step)
                 self.writer.add_scalar("Loss/SSIM", ssim_loss.item(), step)
-                if cfg.normal_loss_weight > 0.0:
+                if cfg.normal_loss_weight:
                     self.writer.add_scalar("Loss/Normal", normal_loss.item(), step)
+                if cfg.distortion_loss_weight:
+                    self.writer.add_scalar(
+                        "Loss/Distortion", distortion_loss.item(), step
+                    )
                 if cfg.bilateral_grid:
                     self.writer.add_scalar("Loss/TV", tv_loss.item(), step)
                 self.writer.add_scalar(

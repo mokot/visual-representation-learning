@@ -11,54 +11,46 @@ class Config:
     # Seed for reproducibility
     seed: int = 42
 
-    # Image
+    # Image configuration
     image: torch.Tensor = torch.rand(32, 32, 3)
-
-    # Batch size (for training)
     batch_size: int = 1
 
-    # Paths for saving results and logs
+    # Paths
     results_path: Optional[Path] = Path("./results")
     logs_path: Optional[Path] = Path("./logs")
 
     # Training settings
     max_steps: int = 1_000
-    learning_rate: Optional[float] = 1e-3  # Learning rate (for group optimization)
+    learning_rate: Optional[float] = 1e-3
+    loss_weights: List[float] = [0.33, 0.33, 0.33]  # [L1, MSE, SSIM]
+    normal_loss_weight: Optional[float] = None  # Not for 3DGS
+    distortion_loss_weight: Optional[float] = None  # Not for 3DGS
 
-    # Degree of spherical harmonics
+    # Regularization settings
+    scale_reg: Optional[float] = None
+    opacity_reg: Optional[float] = None
+
+    # Gaussian initialization and parameters
+    init_type: Literal["random", "grid", "knn"] = (
+        "random"  # `means` are not learnable if `grid`
+    )
+    num_points: int = 1_024
+    extent: float = 2.0
+    init_scale: float = 1.0
+    init_opacity: float = 1.0
+
+    # Model configuration
+    model_type: Literal["2dgs", "2dgs-inria", "3dgs"] = "2dgs"
     sh_degree: Optional[int] = None
 
-    # Group optimization
-    group_optimization: Optional[bool] = True  # If `true`, strategy is ignored
-
-    # Optional strategy
+    # Optimization settings
+    group_optimization: Optional[bool] = True  # If `True`, strategy is ignored
     strategy: Optional[Literal["default", "mcmc"]] = None
-
     selective_adam: Optional[bool] = False
     sparse_gradient: Optional[bool] = False
 
-    # Enable bilateral grid
+    # Bilateral grid settings
     bilateral_grid: Optional[bool] = False
-
-    # Model type and rasterization
-    model_type: Literal["2dgs", "2dgs-inria", "3dgs"] = "2dgs"
-
-    # Gaussian initialization and strategy
-    init_type: Literal["random", "grid", "knn"] = (
-        "random"  # Means are not learnable if `grid`
-    )
-    num_points: int = 1_024  # Number of Gaussians (32x32)
-    extent: float = 2.0  # Extent of Gaussians
-    init_opacity: float = 1.0  # Initial opacity of Gaussians
-    init_scale: float = 1.0  # Initial scale of Gaussians
-
-    # Weighted loss [L1, MSE, SSIM]
-    loss_weights: List[float] = [0.33, 0.33, 0.33]
-    normal_loss_weight: Optional[float] = 0.0
-    distortion_loss_weight: Optional[float] = 0.0
-
-    scale_reg: Optional[float] = 0.0
-    opacity_reg: Optional[float] = 0.0
 
     # Learnable parameters
     learnable_params: dict = field(

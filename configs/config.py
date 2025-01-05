@@ -21,14 +21,16 @@ class Config:
 
     # Training settings
     max_steps: int = 1_000
-    learning_rate: Optional[float] = 1e-3
-    loss_weights: List[float] = [0.33, 0.33, 0.33]  # [L1, MSE, SSIM]
+    learning_rate: Optional[float] = 1e-3  # Only for group optimization
+    loss_weights: List[float] = field(
+        default_factory=lambda: [1 / 3, 1 / 3, 1 / 3]
+    )  # [L1, MSE, SSIM]
     normal_loss_weight: Optional[float] = None  # Not for 3DGS
     distortion_loss_weight: Optional[float] = None  # Not for 3DGS
 
     # Regularization settings
-    scale_reg: Optional[float] = None
-    opacity_reg: Optional[float] = None
+    scale_regularization: Optional[float] = None
+    opacity_regularization: Optional[float] = None
 
     # Gaussian initialization and parameters
     init_type: Literal["random", "grid", "knn"] = (
@@ -44,13 +46,13 @@ class Config:
     sh_degree: Optional[int] = None
 
     # Optimization settings
-    group_optimization: Optional[bool] = True  # If `True`, strategy is ignored
+    group_optimization: bool = True  # If `True`, strategy is ignored
     strategy: Optional[Literal["default", "mcmc"]] = None
-    selective_adam: Optional[bool] = False
-    sparse_gradient: Optional[bool] = False
+    selective_adam: bool = False  # Only for 3DGS
+    sparse_gradient: bool = False
 
     # Bilateral grid settings
-    bilateral_grid: Optional[bool] = False
+    bilateral_grid: bool = False  # Only for 3DGS
 
     # Learnable parameters
     learnable_params: dict = field(

@@ -3,6 +3,7 @@ tqdm
 numpy
 torch
 gsplat
+tensorly
 ipykernel
 matplotlib
 tensorboard

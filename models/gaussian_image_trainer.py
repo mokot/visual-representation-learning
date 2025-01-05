@@ -1,9 +1,9 @@
 import math
 import time
 import torch
+import gsplat
 import numpy as np
 from pathlib import Path
-from gsplat.optimizers import SelectiveAdam
 from configs import get_progress_bar, Config
 from torch.utils.tensorboard import SummaryWriter
 from references import slice, total_variation_loss, BilateralGrid
@@ -304,7 +304,7 @@ class GaussianImageTrainer:
         if cfg.sparse_gradient:
             optimizer = torch.optim.SparseAdam
         elif cfg.selective_adam:
-            optimizer = SelectiveAdam
+            optimizer = gsplat.optimizers.SelectiveAdam
         else:
             optimizer = torch.optim.Adam
 
@@ -540,15 +540,16 @@ class GaussianImageTrainer:
                 tv_loss = 10 * total_variation_loss(self.bilateral_grids.grids)
                 loss += tv_loss
 
-            if cfg.scale_reg:
+            if cfg.scale_regularization:
                 loss = (
                     loss
-                    + cfg.scale_reg * torch.abs(torch.exp(self.splats["scales"])).mean()
+                    + cfg.scale_regularization
+                    * torch.abs(torch.exp(self.splats["scales"])).mean()
                 )
-            if cfg.opacity_reg:
+            if cfg.opacity_regularization:
                 loss = (
                     loss
-                    + cfg.opacity_reg
+                    + cfg.opacity_regularization
                     * torch.abs(torch.sigmoid(self.splats["opacities"])).mean()
                 )
 

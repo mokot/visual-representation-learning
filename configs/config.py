@@ -4,6 +4,7 @@ from pathlib import Path
 from utils import custom_serializer
 from dataclasses import dataclass, field
 from typing import List, Optional, Literal
+import torch
 
 
 @dataclass
@@ -15,6 +16,11 @@ class Config:
     image: torch.Tensor = torch.rand(32, 32, 3)
     batch_size: int = 1
 
+    # Save
+    # @Rok added to avoid saving results and making training more efficient
+    # TODO: implement
+    save_results: Optional[bool] = True
+    
     # Paths
     results_path: Optional[Path] = Path("./results")
     logs_path: Optional[Path] = Path("./logs")
@@ -25,6 +31,7 @@ class Config:
     loss_weights: List[float] = field(
         default_factory=lambda: [1 / 3, 1 / 3, 1 / 3]
     )  # [L1, MSE, SSIM]
+    # loss_weights = torch.tensor([1/3, 1/3, 1/3])  # @Rok changed to tensor for easier operations and less errors
     normal_loss_weight: Optional[float] = None  # Not for 3DGS
     distortion_loss_weight: Optional[float] = None  # Not for 3DGS
 

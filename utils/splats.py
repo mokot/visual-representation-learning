@@ -112,9 +112,11 @@ def save_splat_hdf5(splat: torch.nn.ParameterDict, path: Path) -> None:
         splat (torch.nn.ParameterDict): A ParameterDict object representing the splat.
         path (Path): The file path to save the splat.
     """
-    with h5py.File(path, "w") as f:
+    # @Rok added swmr to ensure sync + properly closed f
+    with h5py.File(path, "w", swmr=True) as f:
         for key, value in splat.items():
             f.create_dataset(key, data=value.detach().cpu().numpy())
+            f.close()
 
 
 def save_splats(splat_list: List[torch.nn.ParameterDict], path: Path) -> None:
@@ -140,7 +142,7 @@ def save_splats_hdf5(splat_list: List[torch.nn.ParameterDict], path: Path) -> No
         splat_list (List[torch.nn.ParameterDict]): A list of ParameterDict objects representing splats.
         path (Path): The file path to save the splats.
     """
-    with h5py.File(path, "w") as f:
+    with h5py.File(path, "w", swmr=True) as f:
         for i, splat in enumerate(splat_list):
             group = f.create_group(f"splat_{i}")
             for key, value in splat.items():

@@ -182,14 +182,13 @@ class GaussianImageTrainer:
             dist2_avg = (compute_knn_distances(means, 4)[:, 1:] ** 2).mean(dim=-1)
             dist_avg = torch.sqrt(dist2_avg)
             scales = (
-                torch.log(dist_avg * cfg.init_scale, device=self.device)
+                torch.log(dist_avg * cfg.init_scale)  # @Rok deleted self.device attribute
                 .unsqueeze(-1)
                 .repeat(1, 3)
             )
 
             opacities = torch.logit(
-                torch.full((self.num_points,), cfg.init_opacity),
-                device=self.device,
+                torch.full((self.num_points,), cfg.init_opacity)  # @Rok deleted self.device attribute
             )
 
         else:
@@ -295,7 +294,8 @@ class GaussianImageTrainer:
             )
 
         self.splats = torch.nn.ParameterDict(
-            {name: value for name, value, _ in params if value.requires_grad}
+            # {name: value for name, value, _ in params if value.requires_grad}  # @Rok changed this as there is a bug when "means" is fixed and it's not saved
+            {name: value for name, value, _ in params}
         ).to(self.device)
         self.splat_features = torch.nn.ParameterDict(
             {name: value for name, value, _ in params if not value.requires_grad}
@@ -315,6 +315,10 @@ class GaussianImageTrainer:
                     cfg.learning_rate,
                 )
             }
+            # self.optimizers = optimizer(
+            #         [values for _, values, _ in params if values.requires_grad],
+            #         cfg.learning_rate,
+            #     )
             self.schedulers = []
         else:
             self.optimizers = {
@@ -423,13 +427,14 @@ class GaussianImageTrainer:
                     _,
                     info,
                 ) = rasterization_2dgs(
-                    means=means,
-                    quats=quats,
-                    scales=scales,
-                    opacities=opacities,
-                    colors=colors,
-                    viewmats=viewmats,
-                    Ks=Ks,
+                    # @Rok forced float to avoid error
+                    means=means.float(),
+                    quats=quats.float(),
+                    scales=scales.float(),
+                    opacities=opacities.float(),
+                    colors=colors.float(),
+                    viewmats=viewmats.float(),
+                    Ks=Ks.float(),
                     width=self.W,
                     height=self.H,
                     distloss=cfg.distortion_loss_weight,
@@ -458,13 +463,14 @@ class GaussianImageTrainer:
                 _ = render_colors[..., 3]
             elif self.model_type == "3dgs":
                 render_colors, _, info = rasterization(
-                    means=means,
-                    quats=quats,
-                    scales=scales,
-                    opacities=opacities,
-                    colors=colors,
-                    viewmats=viewmats,
-                    Ks=Ks,
+                    # @Rok forced dtypes to avoid error
+                    means=means.float(),
+                    quats=quats.float(),
+                    scales=scales.float(),
+                    opacities=opacities.float(),
+                    colors=colors.float(),
+                    viewmats=viewmats.float(),
+                    Ks=Ks.float(),
                     width=self.W,
                     height=self.H,
                     sparse_grad=cfg.sparse_gradient,
@@ -512,7 +518,8 @@ class GaussianImageTrainer:
             )  # BxCxHxW
 
             # Compute total loss
-            loss = np.dot([l1_loss, mse_loss, ssim_loss], cfg.loss_weights)
+            loss = l1_loss * cfg.loss_weights[0] + mse_loss * cfg.loss_weights[1] + ssim_loss * cfg.loss_weights[2] # @ Rok this was throwing many errors, so I went for the simpler variant.
+            # loss = np.dot([l1_loss, mse_loss, ssim_loss], cfg.loss_weights)  # @Rok changed to torch.dot
 
             # Option: Add depth loss
 
@@ -585,12 +592,24 @@ class GaussianImageTrainer:
                     visibility_mask = (info["radii"] > 0).any(0)
 
             # Optimize the parameters and update the learning rate
-            for optimizer in self.optimizers.values():
-                (
+
+            
+            # @ Rok new version, I guess this was the intended idea:
+            if cfg.selective_adam:
+                for optimizer in self.optimizers.values():
+                    optimizer.step(visibility_mask)
+            else:
+                for optimizer in self.optimizers.values():
                     optimizer.step()
-                    if cfg.selective_adam
-                    else optimizer.step(visibility_mask)
-                )
+            
+            # @ Rok old version which was problematic, as visibility mask is only defined when selective_adam is true:
+            # for optimizer in self.optimizers.values():
+            #     (   
+            #         optimizer.step()
+            #         if cfg.selective_adam
+            #         else optimizer.step(visibility_mask)
+            #     )
+                
             for scheduler in self.schedulers:
                 scheduler.step()
 
@@ -637,9 +656,14 @@ class GaussianImageTrainer:
                     )
                 if cfg.bilateral_grid:
                     self.writer.add_scalar("Loss/TV", tv_loss.item(), step)
-                self.writer.add_scalar(
-                    "LearningRate", self.optimizers["means"].param_groups[0]["lr"], step
-                )
+                # print(self.optimizers["optimizer"].keys())
+
+                # @Rok added clause to avoid bug due to different form of optimizer
+                # TODO: could add writer for the case of group_optimization = True
+                if not cfg.group_optimization:
+                    self.writer.add_scalar(
+                        "LearningRate", self.optimizers["means"].param_groups[0]["lr"], step
+                    )
                 self.writer.add_scalar(
                     "Memory/Allocated", torch.cuda.memory_allocated(), step
                 )
@@ -654,7 +678,9 @@ class GaussianImageTrainer:
                 self.writer.add_image("Rendered vs. Original", canvas.squeeze(0), step)
                 self.writer.flush()
                 save_splat(self.splats, self.results_path / f"splat_{step:05d}.pt")
-                save_splat_hdf5(self.splats, self.results_path / f"splat_{step:05d}.h5")
+
+                # @ Rok commented out as this was having issues
+                # save_splat_hdf5(self.splats, self.results_path / f"splat_{step:05d}.h5")
 
             # Option: Early stopping (based on validation)
 
@@ -664,7 +690,11 @@ class GaussianImageTrainer:
         print(f"Final loss: {loss.item()}")
         print(f"Total Time: Rasterization: {times[0]:.3f}s, Backward: {times[1]:.3f}s")
         save_splat(self.splats, self.results_path / "splat_final.pt")
-        save_splat_hdf5(self.splats, self.results_path / "splat_final.h5")
+
+        # @ Rok commented out as this was having issues
+        # save_splat_hdf5(self.splats, self.results_path / "splat_final.h5")
+
+        return render_colors
 
 
 # TODO: create eval method

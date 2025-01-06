@@ -23,7 +23,6 @@ from utils import (
     save_gif,
     set_random_seed,
     save_splat,
-    save_splat_hdf5,
     save_tensor,
 )
 
@@ -56,7 +55,8 @@ class GaussianImageTrainer:
         self.logs_path.mkdir(parents=True, exist_ok=True)
 
         # Tensorboard logging
-        self.writer = SummaryWriter(log_dir=self.logs_path)
+        if cfg.save_logs:
+            self.writer = SummaryWriter(log_dir=self.logs_path)
 
         # Define initialization and model type
         self.init_type = cfg.init_type
@@ -182,14 +182,14 @@ class GaussianImageTrainer:
             dist2_avg = (compute_knn_distances(means, 4)[:, 1:] ** 2).mean(dim=-1)
             dist_avg = torch.sqrt(dist2_avg)
             scales = (
-                torch.log(dist_avg * cfg.init_scale)  # @Rok deleted self.device attribute
+                torch.log(dist_avg * cfg.init_scale)
                 .unsqueeze(-1)
                 .repeat(1, 3)
+                .to(self.device)
             )
-
             opacities = torch.logit(
-                torch.full((self.num_points,), cfg.init_opacity)  # @Rok deleted self.device attribute
-            )
+                torch.full((self.num_points,), cfg.init_opacity)
+            ).to(self.device)
 
         else:
             raise ValueError(f"Unsupported initialization type: {self.init_type}")
@@ -294,8 +294,7 @@ class GaussianImageTrainer:
             )
 
         self.splats = torch.nn.ParameterDict(
-            # {name: value for name, value, _ in params if value.requires_grad}  # @Rok changed this as there is a bug when "means" is fixed and it's not saved
-            {name: value for name, value, _ in params}
+            {name: value for name, value, _ in params if value.requires_grad}
         ).to(self.device)
         self.splat_features = torch.nn.ParameterDict(
             {name: value for name, value, _ in params if not value.requires_grad}
@@ -363,9 +362,9 @@ class GaussianImageTrainer:
         Trains the Gaussians to fit the ground truth image.
         """
         cfg = self.cfg
-        cfg.save(self.logs_path / "config.json")
+        cfg.save_logs and cfg.save(self.logs_path / "config.json")
         image = self.image
-        save_tensor(image, self.results_path / "original.png")
+        cfg.save_results and save_tensor(image, self.results_path / "original.png")
 
         # Training loop
         frames = []
@@ -380,23 +379,23 @@ class GaussianImageTrainer:
                 self.splats["means"]
                 if "means" in self.splats
                 else self.splat_features["means"]
-            )
+            ).float()
             quats = (
                 self.splats["quats"]
                 if "quats" in self.splats
                 else self.splat_features["quats"]
             )
-            quats = quats / quats.norm(dim=-1, keepdim=True)
+            quats = (quats / quats.norm(dim=-1, keepdim=True)).float()
             scales = (
                 self.splats["scales"]
                 if "scales" in self.splats
                 else self.splat_features["scales"]
-            )
+            ).float()
             opacities = torch.sigmoid(
                 self.splats["opacities"]
                 if "opacities" in self.splats
                 else self.splat_features["opacities"]
-            )
+            ).float()
             if cfg.sh_degree:
                 colors = torch.cat(
                     [
@@ -404,15 +403,15 @@ class GaussianImageTrainer:
                         self.splats["shN"],
                     ],
                     dim=1,
-                )
+                ).float()
             else:
                 colors = torch.sigmoid(
                     self.splats["colors"]
                     if "colors" in self.splats
                     else self.splat_features["colors"]
-                )
-            viewmats = self.splat_features["viewmats"][None]
-            Ks = self.splat_features["Ks"][None]
+                ).float()
+            viewmats = self.splat_features["viewmats"][None].float()
+            Ks = self.splat_features["Ks"][None].float()
 
             start = time.time()
 
@@ -427,14 +426,13 @@ class GaussianImageTrainer:
                     _,
                     info,
                 ) = rasterization_2dgs(
-                    # @Rok forced float to avoid error
-                    means=means.float(),
-                    quats=quats.float(),
-                    scales=scales.float(),
-                    opacities=opacities.float(),
-                    colors=colors.float(),
-                    viewmats=viewmats.float().clone(),
-                    Ks=Ks.float(),
+                    means=means,
+                    quats=quats,
+                    scales=scales,
+                    opacities=opacities,
+                    colors=colors,
+                    viewmats=viewmats,
+                    Ks=Ks,
                     width=self.W,
                     height=self.H,
                     distloss=cfg.distortion_loss_weight,
@@ -463,13 +461,12 @@ class GaussianImageTrainer:
                 _ = render_colors[..., 3]
             elif self.model_type == "3dgs":
                 render_colors, _, info = rasterization(
-                    # @Rok forced dtypes to avoid error
-                    means=means.float(),
-                    quats=quats.float(),
-                    scales=scales.float(),
-                    opacities=opacities.float(),
-                    colors=colors.float(),
-                    viewmats=viewmats.float(),
+                    means=means,
+                    quats=quats,
+                    scales=scales,
+                    opacities=opacities,
+                    colors=colors,
+                    viewmats=viewmats,
                     Ks=Ks.float(),
                     width=self.W,
                     height=self.H,
@@ -518,8 +515,11 @@ class GaussianImageTrainer:
             )  # BxCxHxW
 
             # Compute total loss
-            loss = l1_loss * cfg.loss_weights[0] + mse_loss * cfg.loss_weights[1] + ssim_loss * cfg.loss_weights[2] # @ Rok this was throwing many errors, so I went for the simpler variant.
-            # loss = np.dot([l1_loss, mse_loss, ssim_loss], cfg.loss_weights)  # @Rok changed to torch.dot
+            loss = (
+                l1_loss * cfg.loss_weights[0]
+                + mse_loss * cfg.loss_weights[1]
+                + ssim_loss * cfg.loss_weights[2]
+            )
 
             # Option: Add depth loss
 
@@ -593,23 +593,13 @@ class GaussianImageTrainer:
 
             # Optimize the parameters and update the learning rate
 
-            
-            # @ Rok new version, I guess this was the intended idea:
-            if cfg.selective_adam:
-                for optimizer in self.optimizers.values():
-                    optimizer.step(visibility_mask)
-            else:
-                for optimizer in self.optimizers.values():
+            for optimizer in self.optimizers.values():
+                (
                     optimizer.step()
-            
-            # @ Rok old version which was problematic, as visibility mask is only defined when selective_adam is true:
-            # for optimizer in self.optimizers.values():
-            #     (   
-            #         optimizer.step()
-            #         if cfg.selective_adam
-            #         else optimizer.step(visibility_mask)
-            #     )
-                
+                    if not cfg.selective_adam
+                    else optimizer.step(visibility_mask)
+                )
+
             for scheduler in self.schedulers:
                 scheduler.step()
 
@@ -634,65 +624,70 @@ class GaussianImageTrainer:
             if step % 5 == 0:
                 description = f"Loss: {loss:.3f} (L1: {l1_loss:.3f}, MSE: {mse_loss:.3f}, SSIM: {ssim_loss:.3f})"
                 progress_bar.set_description(description)
-                append_log(description, self.logs_path / "logs.txt")
+                cfg.logs_path and append_log(description, self.logs_path / "logs.txt")
                 frames.append(
                     (render_colors.detach().cpu().numpy() * 255).astype(np.uint8)
                 )
             if step % 100 == 0:
-                save_tensor(render_colors, self.results_path / f"step_{step:05d}.png")
+                if cfg.save_results:
+                    save_tensor(
+                        render_colors, self.results_path / f"step_{step:05d}.png"
+                    )
+                    save_splat(
+                        torch.nn.ParameterDict({**self.splats, **self.splat_features}),
+                        self.results_path / f"splat_{step:05d}.pt",
+                    )
                 # Tensorboard logging
-                self.writer.add_scalar(
-                    "Number of Gaussians", len(self.splats["means"]), step
-                )
-                self.writer.add_scalar("Loss/Total", loss.item(), step)
-                self.writer.add_scalar("Loss/L1", l1_loss.item(), step)
-                self.writer.add_scalar("Loss/MSE", mse_loss.item(), step)
-                self.writer.add_scalar("Loss/SSIM", ssim_loss.item(), step)
-                if cfg.normal_loss_weight:
-                    self.writer.add_scalar("Loss/Normal", normal_loss.item(), step)
-                if cfg.distortion_loss_weight:
+                if cfg.save_logs:
                     self.writer.add_scalar(
-                        "Loss/Distortion", distortion_loss.item(), step
+                        "Number of Gaussians", len(self.splats["means"]), step
                     )
-                if cfg.bilateral_grid:
-                    self.writer.add_scalar("Loss/TV", tv_loss.item(), step)
-                # print(self.optimizers["optimizer"].keys())
-
-                # @Rok added clause to avoid bug due to different form of optimizer
-                # TODO: could add writer for the case of group_optimization = True
-                if not cfg.group_optimization:
+                    self.writer.add_scalar("Loss/Total", loss.item(), step)
+                    self.writer.add_scalar("Loss/L1", l1_loss.item(), step)
+                    self.writer.add_scalar("Loss/MSE", mse_loss.item(), step)
+                    self.writer.add_scalar("Loss/SSIM", ssim_loss.item(), step)
+                    if cfg.normal_loss_weight:
+                        self.writer.add_scalar("Loss/Normal", normal_loss.item(), step)
+                    if cfg.distortion_loss_weight:
+                        self.writer.add_scalar(
+                            "Loss/Distortion", distortion_loss.item(), step
+                        )
+                    if cfg.bilateral_grid:
+                        self.writer.add_scalar("Loss/TV", tv_loss.item(), step)
+                    if not cfg.group_optimization:
+                        self.writer.add_scalar(
+                            "LearningRate",
+                            self.optimizers["means"].param_groups[0]["lr"],
+                            step,
+                        )
                     self.writer.add_scalar(
-                        "LearningRate", self.optimizers["means"].param_groups[0]["lr"], step
+                        "Memory/Allocated", torch.cuda.memory_allocated(), step
                     )
-                self.writer.add_scalar(
-                    "Memory/Allocated", torch.cuda.memory_allocated(), step
-                )
-                canvas = torch.cat(
-                    [
-                        render_colors.permute(2, 0, 1).unsqueeze(0),
-                        image.permute(2, 0, 1).unsqueeze(0),
-                    ],
-                    dim=-1,
-                )
-                canvas = canvas.detach().cpu().numpy()
-                self.writer.add_image("Rendered vs. Original", canvas.squeeze(0), step)
-                self.writer.flush()
-                save_splat(self.splats, self.results_path / f"splat_{step:05d}.pt")
-
-                # @ Rok commented out as this was having issues
-                # save_splat_hdf5(self.splats, self.results_path / f"splat_{step:05d}.h5")
+                    canvas = torch.cat(
+                        [
+                            render_colors.permute(2, 0, 1).unsqueeze(0),
+                            image.permute(2, 0, 1).unsqueeze(0),
+                        ],
+                        dim=-1,
+                    )
+                    canvas = canvas.detach().cpu().numpy()
+                    self.writer.add_image(
+                        "Rendered vs. Original", canvas.squeeze(0), step
+                    )
+                    self.writer.flush()
 
             # Option: Early stopping (based on validation)
 
         # Save the final results
-        save_gif(frames, self.results_path / "animation.gif")
-        save_tensor(render_colors, self.results_path / "final.png")
+        if cfg.save_results:
+            save_gif(frames, self.results_path / "animation.gif")
+            save_tensor(render_colors, self.results_path / "final.png")
+            save_splat(
+                torch.nn.ParameterDict({**self.splats, **self.splat_features}),
+                self.results_path / "splat_final.pt",
+            )
         print(f"Final loss: {loss.item()}")
         print(f"Total Time: Rasterization: {times[0]:.3f}s, Backward: {times[1]:.3f}s")
-        save_splat(self.splats, self.results_path / "splat_final.pt")
-
-        # @ Rok commented out as this was having issues
-        # save_splat_hdf5(self.splats, self.results_path / "splat_final.h5")
 
         return render_colors
 

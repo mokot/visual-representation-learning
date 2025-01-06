@@ -431,7 +431,7 @@ class GaussianImageTrainer:
                     scales=scales,
                     opacities=opacities,
                     colors=colors,
-                    viewmats=viewmats,
+                    viewmats=viewmats.clone(),  # @Rok cloning avoids a problem caused by the lazyness of the matrix, I don't know a different workaround
                     Ks=Ks,
                     width=self.W,
                     height=self.H,
@@ -507,18 +507,19 @@ class GaussianImageTrainer:
                 )
 
             # Compute loss
-            l1_loss = self.l1(render_colors, image)
-            mse_loss = self.mse(render_colors, image)
-            ssim_loss = 1.0 - self.ssim(
+            # @Rok made the losses class attributes to use outside
+            self.l1_loss = self.l1(render_colors, image)
+            self.mse_loss = self.mse(render_colors, image)
+            self.ssim_loss = 1.0 - self.ssim(
                 render_colors.permute(2, 0, 1).unsqueeze(0),
                 image.permute(2, 0, 1).unsqueeze(0),
             )  # BxCxHxW
 
             # Compute total loss
             loss = (
-                l1_loss * cfg.loss_weights[0]
-                + mse_loss * cfg.loss_weights[1]
-                + ssim_loss * cfg.loss_weights[2]
+                self.l1_loss * cfg.loss_weights[0]
+                + self.mse_loss * cfg.loss_weights[1]
+                + self.ssim_loss * cfg.loss_weights[2]
             )
 
             # Option: Add depth loss
@@ -622,7 +623,7 @@ class GaussianImageTrainer:
 
             # Save logs and results
             if step % 5 == 0:
-                description = f"Loss: {loss:.3f} (L1: {l1_loss:.3f}, MSE: {mse_loss:.3f}, SSIM: {ssim_loss:.3f})"
+                description = f"Loss: {loss:.3f} (L1: {self.l1_loss:.3f}, MSE: {self.mse_loss:.3f}, SSIM: {self.ssim_loss:.3f})"
                 progress_bar.set_description(description)
                 cfg.logs_path and append_log(description, self.logs_path / "logs.txt")
                 frames.append(
@@ -640,12 +641,17 @@ class GaussianImageTrainer:
                 # Tensorboard logging
                 if cfg.save_logs:
                     self.writer.add_scalar(
-                        "Number of Gaussians", len(self.splats["means"]), step
+                        # @Rok added correct code in the case of means not differentiable
+                        "Number of Gaussians", len(
+                            self.splats["means"]
+                            if "means" in self.splats
+                            else self.splat_features["means"]
+                        ), step
                     )
                     self.writer.add_scalar("Loss/Total", loss.item(), step)
-                    self.writer.add_scalar("Loss/L1", l1_loss.item(), step)
-                    self.writer.add_scalar("Loss/MSE", mse_loss.item(), step)
-                    self.writer.add_scalar("Loss/SSIM", ssim_loss.item(), step)
+                    self.writer.add_scalar("Loss/L1", self.l1_loss.item(), step)
+                    self.writer.add_scalar("Loss/MSE", self.mse_loss.item(), step)
+                    self.writer.add_scalar("Loss/SSIM", self.ssim_loss.item(), step)
                     if cfg.normal_loss_weight:
                         self.writer.add_scalar("Loss/Normal", normal_loss.item(), step)
                     if cfg.distortion_loss_weight:

@@ -433,7 +433,7 @@ class GaussianImageTrainer:
                     scales=scales.float(),
                     opacities=opacities.float(),
                     colors=colors.float(),
-                    viewmats=viewmats.float(),
+                    viewmats=viewmats.float().clone(),
                     Ks=Ks.float(),
                     width=self.W,
                     height=self.H,

@@ -10,3 +10,7 @@ tensorboard
 torchvision
 scikit-learn
 torchmetrics
+optuna
+optuna-dashboard
+plotly
+nbformat

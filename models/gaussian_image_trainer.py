@@ -116,6 +116,15 @@ class GaussianImageTrainer:
             net_type="alex", normalize=True
         ).to(self.device)
 
+    def reinitialize(self, config):
+        """
+        Reinitializes the trainer with a new configuration.
+
+        Args:
+            config (Config): The new configuration to use for the trainer.
+        """
+        self.__init__(config)
+
     def init_gaussians(self) -> None:
         """
         Initializes Gaussian splats based on the initialization strategy.

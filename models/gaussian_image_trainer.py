@@ -109,7 +109,7 @@ class GaussianImageTrainer:
 
         # Loss and metrics functions
         self.l1 = torch.nn.L1Loss()
-        self.mse = torch.nn.MSELoss()
+        self.l2 = torch.nn.MSELoss()
         self.ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(self.device)
         self.psnr = PeakSignalNoiseRatio(data_range=1.0).to(self.device)
         self.lpips = LearnedPerceptualImagePatchSimilarity(
@@ -270,7 +270,7 @@ class GaussianImageTrainer:
         if cfg.sh_degree:
             params = [param for param in params if param[0] != "colors"]
             rgbs = torch.rand(self.num_points, 3, device=self.device)
-            colors = torch.zeros((self.num_points, (cfg.s + 1) ** 2, 3))
+            colors = torch.zeros((self.num_points, (cfg.sh_degree + 1) ** 2, 3))
             colors[:, 0, :] = convert_rgb_to_sh(rgbs)
             params.append(
                 (
@@ -314,10 +314,6 @@ class GaussianImageTrainer:
                     cfg.learning_rate,
                 )
             }
-            # self.optimizers = optimizer(
-            #         [values for _, values, _ in params if values.requires_grad],
-            #         cfg.learning_rate,
-            #     )
             self.schedulers = []
         else:
             self.optimizers = {
@@ -431,10 +427,11 @@ class GaussianImageTrainer:
                     scales=scales,
                     opacities=opacities,
                     colors=colors,
-                    viewmats=viewmats.clone(),  # @Rok cloning avoids a problem caused by the lazyness of the matrix, I don't know a different workaround
+                    viewmats=viewmats.clone(),
                     Ks=Ks,
                     width=self.W,
                     height=self.H,
+                    rander_mode="RGB+D" if cfg.distortion_loss_weight else "RGB",
                     distloss=cfg.distortion_loss_weight,
                     sparse_grad=cfg.sparse_gradient,
                     packed=False or cfg.sparse_gradient,
@@ -446,10 +443,11 @@ class GaussianImageTrainer:
                     scales=scales,
                     opacities=opacities,
                     colors=colors,
-                    viewmats=viewmats,
+                    viewmats=viewmats.clone(),
                     Ks=Ks,
                     width=self.W,
                     height=self.H,
+                    rander_mode="RGB+D" if cfg.distortion_loss_weight else "RGB",
                     distloss=cfg.distortion_loss_weight,
                     sparse_grad=cfg.sparse_gradient,
                     packed=False or cfg.sparse_gradient,
@@ -466,8 +464,8 @@ class GaussianImageTrainer:
                     scales=scales,
                     opacities=opacities,
                     colors=colors,
-                    viewmats=viewmats,
-                    Ks=Ks.float(),
+                    viewmats=viewmats.clone(),
+                    Ks=Ks,
                     width=self.W,
                     height=self.H,
                     sparse_grad=cfg.sparse_gradient,
@@ -507,9 +505,8 @@ class GaussianImageTrainer:
                 )
 
             # Compute loss
-            # @Rok made the losses class attributes to use outside
             self.l1_loss = self.l1(render_colors, image)
-            self.mse_loss = self.mse(render_colors, image)
+            self.l2_loss = self.l2(render_colors, image)
             self.ssim_loss = 1.0 - self.ssim(
                 render_colors.permute(2, 0, 1).unsqueeze(0),
                 image.permute(2, 0, 1).unsqueeze(0),
@@ -518,7 +515,7 @@ class GaussianImageTrainer:
             # Compute total loss
             loss = (
                 self.l1_loss * cfg.loss_weights[0]
-                + self.mse_loss * cfg.loss_weights[1]
+                + self.l2_loss * cfg.loss_weights[1]
                 + self.ssim_loss * cfg.loss_weights[2]
             )
 
@@ -623,7 +620,7 @@ class GaussianImageTrainer:
 
             # Save logs and results
             if step % 5 == 0:
-                description = f"Loss: {loss:.3f} (L1: {self.l1_loss:.3f}, MSE: {self.mse_loss:.3f}, SSIM: {self.ssim_loss:.3f})"
+                description = f"Loss: {loss:.3f} (L1: {self.l1_loss:.3f}, L2: {self.l2_loss:.3f}, SSIM: {self.ssim_loss:.3f})"
                 progress_bar.set_description(description)
                 cfg.logs_path and append_log(description, self.logs_path / "logs.txt")
                 frames.append(
@@ -641,16 +638,17 @@ class GaussianImageTrainer:
                 # Tensorboard logging
                 if cfg.save_logs:
                     self.writer.add_scalar(
-                        # @Rok added correct code in the case of means not differentiable
-                        "Number of Gaussians", len(
+                        "Number of Gaussians",
+                        len(
                             self.splats["means"]
                             if "means" in self.splats
                             else self.splat_features["means"]
-                        ), step
+                        ),
+                        step,
                     )
                     self.writer.add_scalar("Loss/Total", loss.item(), step)
                     self.writer.add_scalar("Loss/L1", self.l1_loss.item(), step)
-                    self.writer.add_scalar("Loss/MSE", self.mse_loss.item(), step)
+                    self.writer.add_scalar("Loss/L2", self.l2_loss.item(), step)
                     self.writer.add_scalar("Loss/SSIM", self.ssim_loss.item(), step)
                     if cfg.normal_loss_weight:
                         self.writer.add_scalar("Loss/Normal", normal_loss.item(), step)

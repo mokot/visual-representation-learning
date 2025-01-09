@@ -1,7 +1,9 @@
+import io
 import torch
+from PIL import Image
 from pathlib import Path
-from typing import Dict, List
 from torchvision import datasets
+from typing import Dict, List, Tuple
 from torch.utils.data import DataLoader
 from constants import CIFAR10_TRANSFORM
 
@@ -92,3 +94,68 @@ def collect_class_images(
                 return class_images
 
     return class_images
+
+
+def save_gs_data(
+    image: Image.Image,
+    label: int,
+    splat: torch.nn.ParameterDict,
+    file_path: Path = Path("data.pt"),
+) -> None:
+    """
+    Saves the image, label, and splat to a file.
+
+    Args:
+        image (Image.Image): A PIL image.
+        label (int): An integer label.
+        splat (torch.nn.ParameterDict): A ParameterDict object.
+        file_path (Path): Path to save the data. Default is 'data.pt'.
+    """
+    # Ensure the parent directory exists
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Convert PIL Image to bytes for serialization
+    img_buffer = io.BytesIO()
+    image.save(img_buffer, format="PNG")  # Change format as needed
+    img_buffer.seek(0)
+
+    torch.save(
+        {
+            "image": img_buffer.getvalue(),  # Save image as bytes
+            "label": label,
+            "splat": splat.state_dict(),  # Save state_dict for ParameterDict
+        },
+        str(file_path),  # Convert Path to string for torch.save
+    )
+
+
+def load_gs_data(
+    file_path: Path = Path("data.pt"),
+) -> Tuple[Image.Image, int, torch.nn.ParameterDict]:
+    """
+    Loads the image, label, and splat from a file.
+
+    Args:
+        file_path (Path): Path to load the data from. Default is 'data.pt'.
+
+    Returns:
+        Tuple[Image.Image, int, torch.nn.ParameterDict]: The loaded image, label, and splat ParameterDict.
+    """
+    data = torch.load(
+        str(file_path), weights_only=False
+    )  # Convert Path to string for torch.load
+
+    # Load image from bytes
+    img_buffer = io.BytesIO(data["image"])
+    image = Image.open(img_buffer)
+
+    # Create ParameterDict with the same structure as the saved one
+    splat = torch.nn.ParameterDict(
+        {
+            key: torch.nn.Parameter(torch.empty_like(value))
+            for key, value in data["splat"].items()
+        }
+    )
+    splat.load_state_dict(data["splat"])
+
+    return image, data["label"], splat

@@ -146,3 +146,65 @@ def save_splats_hdf5(splat_list: List[torch.nn.ParameterDict], path: Path) -> No
             group = f.create_group(f"splat_{i}")
             for key, value in splat.items():
                 group.create_dataset(key, data=value.detach().cpu().numpy())
+
+
+def merge_spherical_harmonics(splat: torch.nn.ParameterDict) -> torch.nn.ParameterDict:
+    """
+    Merges the spherical harmonics coefficients (sh0 and shN) into a single 'color' tensor
+    and removes the original 'sh0' and 'shN' keys from the ParameterDict.
+
+    Args:
+        splat (torch.nn.ParameterDict): A dictionary of parameters containing optional 'sh0' and 'shN' keys.
+
+    Returns:
+        torch.nn.ParameterDict: Updated ParameterDict with a 'color' key if 'sh0' and 'shN' are present,
+                                otherwise raises an error or ensures consistency.
+    """
+    if "sh0" in splat and "shN" in splat:
+        # Combine sh0 and shN into a single tensor 'color'
+        splat["color"] = torch.cat(
+            [splat["sh0"], splat["shN"]],
+            dim=1,
+        ).float()
+        del splat["sh0"]
+        del splat["shN"]
+    else:
+        # Clean up any partial keys and ensure consistency
+        keys_removed = []
+        for key in ["sh0", "shN"]:
+            if key in splat:
+                del splat[key]
+                keys_removed.append(key)
+
+        if "color" not in splat:
+            raise ValueError(
+                f"Cannot create 'color' tensor because required keys are missing: {', '.join(keys_removed)}"
+                if keys_removed
+                else "No valid spherical harmonics coefficients found in the splat."
+            )
+
+    return splat
+
+
+def generate_random_splat(num_points):
+    """
+    Generate random splat with specified shapes.
+
+    Args:
+        num_points (int): Number of points to generate.
+
+    Returns:
+        tuple: Means, quats, scales, opacities, colors, viewmats, ks, sh0, shN.
+    """
+    means = torch.rand(num_points, 3)
+    quats = torch.rand(num_points, 4)
+    quats = quats / torch.norm(quats, dim=1, keepdim=True)
+    scales = torch.rand(num_points, 3)
+    opacities = torch.rand(num_points, 1)
+    colors = torch.rand(num_points, 3)
+    viewmats = torch.rand(4, 4)
+    ks = torch.rand(3, 3)
+    sh0 = torch.rand(num_points, 1)
+    shN = torch.rand(num_points, 2)
+
+    return means, quats, scales, opacities, colors, viewmats, ks, sh0, shN

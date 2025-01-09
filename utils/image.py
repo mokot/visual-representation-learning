@@ -44,3 +44,22 @@ def preprocess_image(image: torch.Tensor, device: torch.device) -> torch.Tensor:
 
     # Move the tensor to the appropriate device
     return image.to(device=device)
+
+
+def tensor_to_image(tensor: torch.Tensor) -> Image.Image:
+    """
+    Converts a PyTorch tensor to a PIL Image.
+
+    Args:
+        tensor (torch.Tensor): A PyTorch tensor with pixel values normalized to the range [0, 1].
+
+    Returns:
+        Image.Image: A PIL Image created from the tensor.
+    """
+    if not isinstance(tensor, torch.Tensor):
+        raise TypeError("Input must be a PyTorch tensor.")
+
+    # Convert tensor to numpy array
+    array = (tensor.numpy() * 255).astype("uint8")  # HWC format
+
+    return Image.fromarray(array)

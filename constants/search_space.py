@@ -11,8 +11,8 @@ GRID_SEARCH_SPACE_TEST = {
     "normal_loss_weight": [None, 0.1, 0.5, 1.0],
     "distortion_loss_weight": [None, 0.1, 0.5, 1.0],
     # Regularization settings
-    "scale_regulation": [None, 0.1, 0.5, 1.0],
-    "opacity_regulation": [None, 0.1, 0.5, 1.0],
+    "scale_regularization": [None, 0.1, 0.5, 1.0],
+    "opacity_regularization": [None, 0.1, 0.5, 1.0],
     # Gaussian initialization and parameters
     "init_type": ["random", "grid", "knn"],
     "num_points": [256, 512, 1024, 2048],
@@ -53,8 +53,8 @@ GRID_SEARCH_SPACE_TEST_2 = {
 
 # Lets figure out if the regularization helps
 GRID_SEARCH_SPACE_TEST_3 = {
-    "scale_regulation": [None, 0.1, 0.5, 1.0],
-    "opacity_regulation": [None, 0.1, 0.5, 1.0],
+    "scale_regularization": [None, 0.1, 0.5, 1.0],
+    "opacity_regularization": [None, 0.1, 0.5, 1.0],
 }
 
 # What about initializations?

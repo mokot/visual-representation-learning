@@ -25,8 +25,8 @@ class Config:
     max_steps: int = 1_000
     learning_rate: Optional[float] = 1e-3  # Only for group optimization
     loss_weights: List[float] = field(
-        default_factory=lambda: [1 / 3, 1 / 3, 1 / 3]
-    )  # [L1, MSE, SSIM]
+        default_factory=lambda: [1 / 2, 0, 1 / 2]
+    )  # [L1, L2, SSIM]
     normal_loss_weight: Optional[float] = None  # Not for 3DGS
     distortion_loss_weight: Optional[float] = None  # Not for 3DGS
 

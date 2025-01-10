@@ -116,6 +116,15 @@ class GaussianImageTrainer:
             net_type="alex", normalize=True
         ).to(self.device)
 
+    def reinitialize(self, config):
+        """
+        Reinitializes the trainer with a new configuration.
+
+        Args:
+            config (Config): The new configuration to use for the trainer.
+        """
+        self.__init__(config)
+
     def init_gaussians(self) -> None:
         """
         Initializes Gaussian splats based on the initialization strategy.
@@ -351,11 +360,22 @@ class GaussianImageTrainer:
                 )
             )
 
-    def train(
-        self,
-    ) -> None:
+    def train(self) -> torch.nn.ParameterDict:
         """
         Trains the Gaussians to fit the ground truth image.
+
+        Returns:
+            torch.nn.ParameterDict: A dictionary containing the combined parameters
+            from `self.splats` and `self.splat_features`, including:
+            - Means
+            - Quats
+            - Scales
+            - Opacities
+            - Colors
+            - Viewmats
+            - Ks
+            - Sh0
+            - ShN
         """
         cfg = self.cfg
         cfg.save_logs and cfg.save(self.logs_path / "config.json")
@@ -693,7 +713,7 @@ class GaussianImageTrainer:
         print(f"Final loss: {loss.item()}")
         print(f"Total Time: Rasterization: {times[0]:.3f}s, Backward: {times[1]:.3f}s")
 
-        return render_colors
+        return torch.nn.ParameterDict({**self.splats, **self.splat_features})
 
 
 # TODO: create eval method

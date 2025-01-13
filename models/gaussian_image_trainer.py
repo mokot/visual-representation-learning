@@ -279,13 +279,10 @@ class GaussianImageTrainer:
         if cfg.sh_degree:
             params = [param for param in params if param[0] != "colors"]
             rgbs = torch.rand(self.num_points, 3, device=self.device)
-            # @Rok: Calculate number of SH coefficients based on degree
             num_sh_coeffs = (cfg.sh_degree + 1) ** 2
-            # @Rok: Initialize colors with correct shape [N, D, 3] where D is number of SH coefficients
             colors = torch.zeros((self.num_points, num_sh_coeffs, 3), device=self.device)
             colors[:, 0, :] = convert_rgb_to_sh(rgbs)
-            
-            # @Rok: Split into DC (sh0) and other coefficients (shN)
+
             params.append(
                 (
                     "sh0",
@@ -296,8 +293,6 @@ class GaussianImageTrainer:
                     2.5e-3,
                 )
             )
-
-            # @Rok: Add shN if there are more than 1 SH coefficient
             if num_sh_coeffs > 1:
                 params.append(
                     (
@@ -420,7 +415,6 @@ class GaussianImageTrainer:
                 if "opacities" in self.splats
                 else self.splat_features["opacities"]
             ).float()
-            # @Rok: only add shN if there are more than 1 SH coefficient
             if cfg.sh_degree:
                 if "shN" in self.splats:
                     colors = torch.cat(
@@ -463,34 +457,12 @@ class GaussianImageTrainer:
                     Ks=Ks,
                     width=self.W,
                     height=self.H,
-                    render_mode="RGB+D" if cfg.distortion_loss_weight else "RGB", # @Rok fixed typo "rander_mode" to render_mode
+                    render_mode="RGB+D" if cfg.distortion_loss_weight else "RGB",
                     distloss=cfg.distortion_loss_weight,
                     sparse_grad=cfg.sparse_gradient,
                     packed=False or cfg.sparse_gradient,
                     sh_degree=cfg.sh_degree,
                 )
-
-                # @Rok: moved this block here
-                render_colors = render_colors[0]
-                if render_colors.shape[-1] == 4:
-                    render_colors = render_colors[..., :3]
-                elif len(render_colors.shape) == 3 and render_colors.shape[-1] > 3:
-                    # @Rok: When using spherical harmonics, reshape the output to match expected RGB format
-                    render_colors = render_colors[..., :3]
-
-                if cfg.bilateral_grid:
-                    grid_y, grid_x = torch.meshgrid(
-                        (torch.arange(self.H, device=self.device) + 0.5) / self.H,
-                        (torch.arange(self.W, device=self.device) + 0.5) / self.W,
-                        indexing="ij",
-                    )
-                    grid_xy = torch.stack([grid_x, grid_y], dim=-1).unsqueeze(0)
-                    colors = slice(
-                        self.bilateral_grids,
-                        grid_xy,
-                        colors,
-                        torch.zeros((self.H, self.W, 1)),
-                    )["rgb"]
             elif self.model_type == "2dgs-inria":
                 renders, info = rasterization_2dgs_inria_wrapper(
                     means=means,
@@ -531,6 +503,26 @@ class GaussianImageTrainer:
 
             torch.cuda.synchronize()
             times[0] += time.time() - start
+
+            render_colors = render_colors[0]
+            if render_colors.shape[-1] == 4:
+                render_colors = render_colors[..., :3]
+            elif len(render_colors.shape) == 3 and render_colors.shape[-1] > 3:
+                render_colors = render_colors[..., :3]
+
+            if cfg.bilateral_grid:
+                grid_y, grid_x = torch.meshgrid(
+                    (torch.arange(self.H, device=self.device) + 0.5) / self.H,
+                    (torch.arange(self.W, device=self.device) + 0.5) / self.W,
+                    indexing="ij",
+                )
+                grid_xy = torch.stack([grid_x, grid_y], dim=-1).unsqueeze(0)
+                colors = slice(
+                    self.bilateral_grids,
+                    grid_xy,
+                    colors,
+                    torch.zeros((self.H, self.W, 1)),
+                )["rgb"]
 
             if not cfg.group_optimization and cfg.strategy == "default":
                 self.strategy.step_pre_backward(

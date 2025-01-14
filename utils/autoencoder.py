@@ -1,7 +1,8 @@
+import tqdm
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from typing import Callable, Optional, List, Dict
+from typing import Callable, Optional, List, Dict, Union, Tuple
 
 
 def train(
@@ -9,12 +10,13 @@ def train(
     train_loader: torch.utils.data.DataLoader,
     val_loader: torch.utils.data.DataLoader,
     optimizer: optim.Optimizer,
-    criterion: Callable,
+    criterion: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
     epochs: int,
     device: torch.device,
     scheduler: Optional[optim.lr_scheduler._LRScheduler] = None,
     grad_clip: Optional[float] = None,
     logger: Optional[Callable[[str], None]] = print,
+    compile_model: bool = False,
 ) -> Dict[str, List[float]]:
     """
     Train the model on the training dataset and evaluate it on the validation dataset.
@@ -30,18 +32,24 @@ def train(
         scheduler (Optional[LRScheduler]): Learning rate scheduler.
         grad_clip (Optional[float]): Gradient clipping threshold (if any).
         logger (Optional[Callable[[str], None]]): Function for logging progress (e.g., `print` or a custom logger).
+        compile_model (bool): If True, compiles the model with `torch.compile` for optimization.
 
     Returns:
         Dict[str, List[float]]: Dictionary containing training and validation losses for each epoch.
     """
+    if compile_model:
+        model = torch.compile(model)
+
     model.to(device)
     history = {"train_loss": [], "val_loss": []}
 
     for epoch in range(epochs):
         # Training phase
         model.train()
-        train_loss = 0
-        for x in train_loader:
+        train_loss = 0.0
+        for x in tqdm.tqdm(
+            train_loader, unit="batch", desc=f"Epoch {epoch + 1}/{epochs}"
+        ):
             x = x.to(device)
             optimizer.zero_grad()
             x_hat = model(x)
@@ -58,14 +66,18 @@ def train(
         history["train_loss"].append(train_loss)
 
         # Validation phase
-        val_loss = model.evaluate(val_loader, criterion, device, logger)
+        val_loss = model.evaluate(val_loader, criterion, device, None)
         history["val_loss"].append(val_loss)
 
+        # Scheduler step
         if scheduler:
             scheduler.step(val_loss)
 
+        # Shuffle the training data
+        train_loader.dataset.shuffle()
+
         # Logging
-        log_message = f"Epoch {epoch + 1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}"
+        log_message = f"Epoch {epoch + 1}/{epochs} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}"
         if logger:
             logger(log_message)
 
@@ -78,6 +90,7 @@ def evaluate(
     criterion: Callable,
     device: torch.device,
     logger: Optional[Callable[[str], None]] = print,
+    compile_model: bool = False,
 ) -> float:
     """
     Evaluate the model on a dataset.
@@ -88,10 +101,14 @@ def evaluate(
         criterion (Callable): Loss function.
         device (torch.device): Device to use for computation (e.g., 'cuda' or 'cpu').
         logger (Optional[Callable[[str], None]]): Function for logging progress.
+        compile_model (bool): If True, compiles the model with `torch.compile` for optimization.
 
     Returns:
         float: Average loss on the dataset.
     """
+    if compile_model:
+        model = torch.compile(model)
+
     model.to(device)
     model.eval()
     loss = 0
@@ -114,7 +131,8 @@ def test(
     device: torch.device,
     return_samples: bool = False,
     logger: Optional[Callable[[str], None]] = print,
-) -> float:
+    compile_model: bool = False,
+) -> Union[float, Tuple[float, Tuple[List[torch.Tensor], List[torch.Tensor]]]]:
     """
     Test the model on the test dataset.
 
@@ -125,14 +143,18 @@ def test(
         device (torch.device): Device to use for computation (e.g., 'cuda' or 'cpu').
         return_samples (bool): If True, return the original and reconstructed samples for further analysis.
         logger (Optional[Callable[[str], None]]): Function for logging progress (e.g., `print` or a custom logger).
+        compile_model (bool): If True, compiles the model with `torch.compile` for optimization.
 
     Returns:
         float: Average loss on the test dataset.
         Optional[Tuple[List[torch.Tensor], List[torch.Tensor]]]: If `return_samples` is True, returns a tuple of original and reconstructed samples.
     """
+    if compile_model:
+        model = torch.compile(model)
+
     model.to(device)
     model.eval()
-    loss = 0
+    loss = 0.0
     original_samples = []
     reconstructed_samples = []
 

@@ -58,16 +58,7 @@ def train(
         history["train_loss"].append(train_loss)
 
         # Validation phase
-        model.eval()
-        val_loss = 0
-        with torch.no_grad():
-            for x in val_loader:
-                x = x.to(device)
-                x_hat = model(x)
-                loss = criterion(x_hat, x)
-                val_loss += loss.item()
-
-        val_loss /= len(val_loader)
+        val_loss = model.evaluate(val_loader, criterion, device, logger)
         history["val_loss"].append(val_loss)
 
         if scheduler:
@@ -83,7 +74,7 @@ def train(
 
 def evaluate(
     model: nn.Module,
-    data_loader: torch.utils.data.DataLoader,
+    val_loader: torch.utils.data.DataLoader,
     criterion: Callable,
     device: torch.device,
     logger: Optional[Callable[[str], None]] = print,
@@ -93,7 +84,7 @@ def evaluate(
 
     Args:
         model (nn.Module): The autoencoder model to evaluate.
-        data_loader (DataLoader): DataLoader for the evaluation set.
+        val_loader (DataLoader): DataLoader for the evaluation set.
         criterion (Callable): Loss function.
         device (torch.device): Device to use for computation (e.g., 'cuda' or 'cpu').
         logger (Optional[Callable[[str], None]]): Function for logging progress.
@@ -101,15 +92,67 @@ def evaluate(
     Returns:
         float: Average loss on the dataset.
     """
+    model.to(device)
     model.eval()
     loss = 0
     with torch.no_grad():
-        for x in data_loader:
+        for x in val_loader:
             x = x.to(device)
             x_hat = model(x)
             loss += criterion(x_hat, x).item()
 
-    avg_loss = loss / len(data_loader)
+    avg_loss = loss / len(val_loader)
     if logger:
         logger(f"Evaluation Loss: {avg_loss:.4f}")
+    return avg_loss
+
+
+def test(
+    model: nn.Module,
+    test_loader: torch.utils.data.DataLoader,
+    criterion: Callable,
+    device: torch.device,
+    return_samples: bool = False,
+    logger: Optional[Callable[[str], None]] = print,
+) -> float:
+    """
+    Test the model on the test dataset.
+
+    Args:
+        model (nn.Module): The autoencoder model to test.
+        test_loader (DataLoader): DataLoader for the test set.
+        criterion (Callable): Loss function.
+        device (torch.device): Device to use for computation (e.g., 'cuda' or 'cpu').
+        return_samples (bool): If True, return the original and reconstructed samples for further analysis.
+        logger (Optional[Callable[[str], None]]): Function for logging progress (e.g., `print` or a custom logger).
+
+    Returns:
+        float: Average loss on the test dataset.
+        Optional[Tuple[List[torch.Tensor], List[torch.Tensor]]]: If `return_samples` is True, returns a tuple of original and reconstructed samples.
+    """
+    model.to(device)
+    model.eval()
+    loss = 0
+    original_samples = []
+    reconstructed_samples = []
+
+    with torch.no_grad():
+        for x in test_loader:
+            x = x.to(device)
+            x_hat = model(x)
+            batch_loss = criterion(x_hat, x)
+            loss += batch_loss.item()
+
+            if return_samples:
+                original_samples.append(x.cpu())
+                reconstructed_samples.append(x_hat.cpu())
+
+    avg_loss = loss / len(test_loader)
+
+    if logger:
+        logger(f"Test Loss: {avg_loss:.4f}")
+
+    if return_samples:
+        return avg_loss, (original_samples, reconstructed_samples)
+
     return avg_loss

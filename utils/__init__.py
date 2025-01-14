@@ -1,3 +1,4 @@
+from .autoencoder import train, evaluate, test
 from .color import convert_rgb_to_sh
 from .data import (
     load_cifar10,
@@ -27,6 +28,9 @@ from .splats import (
 from .visualization import visualize_gif, visualize_tensor, visualize_results
 
 __all__ = [
+    "train",
+    "evaluate",
+    "test",
     "convert_rgb_to_sh",
     "load_cifar10",
     "create_default_image",

@@ -143,7 +143,7 @@ def load_gs_data(
         Tuple[Image.Image, int, torch.nn.ParameterDict]: The loaded image, label, and splat ParameterDict.
     """
     data = torch.load(
-        str(file_path), weights_only=False
+        str(file_path), weights_only=False, map_location=torch.device("cpu")
     )  # Convert Path to string for torch.load
 
     # Load image from bytes

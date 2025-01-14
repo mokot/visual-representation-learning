@@ -43,7 +43,15 @@ def train(
     model.to(device)
     history = {"train_loss": [], "val_loss": []}
 
+    # Patience for early stopping
+    patience = 5
+    patience_counter = 0
+    best_val_loss = float("inf")
+
     for epoch in range(epochs):
+        # Shuffle the training data
+        train_loader.dataset.shuffle()
+
         # Training phase
         model.train()
         train_loss = 0.0
@@ -53,6 +61,7 @@ def train(
             x = x.to(device)
             optimizer.zero_grad()
             x_hat = model(x)
+            # TODO: check that x has not changed!
             loss = criterion(x_hat, x)
             loss.backward()
 
@@ -73,14 +82,24 @@ def train(
         if scheduler:
             scheduler.step(val_loss)
 
-        # Shuffle the training data
-        train_loader.dataset.shuffle()
-
         # Logging
         log_message = f"Epoch {epoch + 1}/{epochs} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}"
         if logger:
             logger(log_message)
 
+        # Early stopping (patience)
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            patience_counter = 0
+        else:
+            patience_counter += 1
+            if patience_counter == patience:
+                if logger:
+                    logger(f"Stopping early after {epoch + 1} epochs.")
+                # TODO: save the best model
+                break
+
+    # TODO: save the best model
     return history
 
 

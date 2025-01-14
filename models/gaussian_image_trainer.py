@@ -370,11 +370,12 @@ class GaussianImageTrainer:
                 )
             )
 
-    def train(
-        self,
-    ) -> None:
+    def train(self) -> torch.nn.ParameterDict:
         """
         Trains the Gaussians to fit the ground truth image.
+        
+        Returns:
+            torch.nn.ParameterDict: The trained Gaussian splat parameters
         """
         cfg = self.cfg
         cfg.save_logs and cfg.save(self.logs_path / "config.json")
@@ -723,7 +724,7 @@ class GaussianImageTrainer:
         print(f"Final loss: {loss.item()}")
         print(f"Total Time: Rasterization: {times[0]:.3f}s, Backward: {times[1]:.3f}s")
 
-        return render_colors
+        return torch.nn.ParameterDict({**self.splats, **self.splat_features})
 
 
 # TODO: create eval method

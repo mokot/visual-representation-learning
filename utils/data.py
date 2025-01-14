@@ -6,7 +6,7 @@ from torchvision import datasets
 from typing import Dict, List, Tuple
 from torch.utils.data import DataLoader
 from constants import CIFAR10_TRANSFORM
-
+from utils.image import tensor_to_image
 
 def load_cifar10(
     batch_size: int = 64,
@@ -116,6 +116,7 @@ def save_gs_data(
 
     # Convert PIL Image to bytes for serialization
     img_buffer = io.BytesIO()
+    image = tensor_to_image(image)
     image.save(img_buffer, format="PNG")  # Change format as needed
     img_buffer.seek(0)
 

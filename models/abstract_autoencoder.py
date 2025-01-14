@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 from abc import ABC, abstractmethod
+from typing import Callable, Optional, List, Dict
+from utils import train as train_autoencoder, evaluate as evaluate_autoencoder
 
 
 class AbstractAutoencoder(nn.Module, ABC):
@@ -10,7 +12,6 @@ class AbstractAutoencoder(nn.Module, ABC):
         Initializes the base autoencoder class.
         """
         super(AbstractAutoencoder, self).__init__()
-        self.type = None
         self.encoder = None
         self.decoder = None
 
@@ -35,6 +36,53 @@ class AbstractAutoencoder(nn.Module, ABC):
         if self.decoder is None:
             raise NotImplementedError("Decoder is not defined.")
         return self.decoder(x)
+
+    def fit(
+        self,
+        train_loader: torch.utils.data.DataLoader,
+        val_loader: torch.utils.data.DataLoader,
+        optimizer: torch.optim.Optimizer,
+        criterion: Callable,
+        epochs: int,
+        device: torch.device,
+        scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
+        grad_clip: Optional[float] = None,
+        logger: Optional[Callable[[str], None]] = print,
+    ) -> Dict[str, List[float]]:
+        """
+        Trains the autoencoder using the utils fit function.
+        Note: Cannot use `train` due to conflict with `nn.Module.train()`.
+        """
+        return train_autoencoder(
+            model=self,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            optimizer=optimizer,
+            criterion=criterion,
+            epochs=epochs,
+            device=device,
+            scheduler=scheduler,
+            grad_clip=grad_clip,
+            logger=logger,
+        )
+
+    def evaluate(
+        self,
+        data_loader: torch.utils.data.DataLoader,
+        criterion: Callable,
+        device: torch.device,
+        logger: Optional[Callable[[str], None]] = print,
+    ) -> float:
+        """
+        Evaluates the autoencoder using the utils evaluate function.
+        """
+        return evaluate_autoencoder(
+            model=self,
+            data_loader=data_loader,
+            criterion=criterion,
+            device=device,
+            logger=logger,
+        )
 
     @abstractmethod
     def loss_function(self, x, x_hat):
@@ -82,7 +130,7 @@ class AbstractAutoencoder(nn.Module, ABC):
         """
         Returns the name of the model.
         """
-        return self.type
+        return self.__class__.__name__
 
     def get_num_params(self):
         """

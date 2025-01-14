@@ -10,6 +10,7 @@ class AbstractAutoencoder(nn.Module, ABC):
         Initializes the base autoencoder class.
         """
         super(AbstractAutoencoder, self).__init__()
+        self.type = None
         self.encoder = None
         self.decoder = None
 
@@ -77,12 +78,11 @@ class AbstractAutoencoder(nn.Module, ABC):
         """
         pass
 
-    @abstractmethod
     def get_name(self):
         """
         Returns the name of the model.
         """
-        pass
+        return self.type
 
     def get_num_params(self):
         """

@@ -76,7 +76,7 @@ class GaussianImageTrainer:
                 [0.0, 0.0, 0.0, 1.0],
             ],
             device=self.device,
-        )
+        )  # TODO: Use constant!
 
         # Background color
         self.background = torch.zeros(3, device=self.device)

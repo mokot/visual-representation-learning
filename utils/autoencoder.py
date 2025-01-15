@@ -83,6 +83,8 @@ def train(
         if scheduler:
             scheduler.step(val_loss)
 
+        # TODO: Implement some kind of regularization (e.g., L2, dropout, etc.)
+
         # Logging
         if logger:
             log_message = f"Epoch {epoch + 1}/{epochs} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}"

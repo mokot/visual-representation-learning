@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from typing import Callable, Optional, List, Dict, Union, Tuple
+from utils.data import transform_autoencoder_input, transform_autoencoder_output
 
 
 def train(
@@ -197,3 +198,42 @@ def test(
         return avg_loss, (original_samples, reconstructed_samples)
 
     return avg_loss
+
+
+def transform(
+    model: nn.Module,
+    data_loader: torch.utils.data.DataLoader,
+    device: torch.device,
+    compile_model: bool = False,
+) -> List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]]:
+    """
+    Transform the input data using the autoencoder model. Note that 'data_loader'
+    should have a batch size of 1 and return a tuple of (image, label, splat).
+
+    Args:
+        model (nn.Module): The autoencoder model to use for transformation.
+        data_loader (DataLoader): DataLoader for the input data.
+        device (torch.device): Device to use for computation (e.g., 'cuda' or 'cpu').
+        compile_model (bool): If True, compiles the model with `torch.compile` for optimization.
+
+    Returns:
+        List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]]: List of tuples containing the original image, label, splat, and reconstructed image.
+    """
+    if compile_model:
+        model = torch.compile(model)
+
+    model.to(device)
+    model.eval()
+    results = []
+
+    with torch.no_grad():
+        for x in data_loader:
+            if len(x[0]) == 3:
+                image, label, splat = x[0]
+                x = transform_autoencoder_input(splat)
+            x = x.to(device)
+            x_hat = model(x)
+            splat_hat = transform_autoencoder_output(x_hat)
+            results.append((image, label, splat, splat_hat))
+
+    return results

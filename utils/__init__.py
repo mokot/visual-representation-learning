@@ -1,4 +1,4 @@
-from .autoencoder import train, evaluate, test
+from .autoencoder import train, evaluate, test, transform
 from .color import convert_rgb_to_sh
 from .data import (
     load_cifar10,
@@ -8,6 +8,7 @@ from .data import (
     load_gs_data,
     transform_autoencoder_input,
     transform_autoencoder_output,
+    noop_collate,
     transform_and_collate,
 )
 from .file import save_gif, save_tensor, append_log
@@ -34,6 +35,7 @@ __all__ = [
     "train",
     "evaluate",
     "test",
+    "transform",
     "convert_rgb_to_sh",
     "load_cifar10",
     "create_default_image",
@@ -42,6 +44,7 @@ __all__ = [
     "load_gs_data",
     "transform_autoencoder_input",
     "transform_autoencoder_output",
+    "noop_collate",
     "transform_and_collate",
     "save_gif",
     "save_tensor",

@@ -209,23 +209,27 @@ def transform_autoencoder_output(
     idx = 0
 
     means_size = 1024 * 3  # 3072 elements
-    means = autoencoder_output[idx : idx + means_size].view(1024, 3)
+    means = autoencoder_output[idx : idx + means_size].clone().detach().view(1024, 3)
     idx += means_size
 
     quats_size = 1024 * 4  # 4096 elements
-    quats = autoencoder_output[idx : idx + quats_size].view(1024, 4)
+    quats = autoencoder_output[idx : idx + quats_size].clone().detach().view(1024, 4)
     idx += quats_size
 
     scales_size = 1024 * 3  # 3072 elements
-    scales = autoencoder_output[idx : idx + scales_size].view(1024, 3)
+    scales = autoencoder_output[idx : idx + scales_size].clone().detach().view(1024, 3)
     idx += scales_size
 
     opacities_size = 1024  # 1024 elements
-    opacities = autoencoder_output[idx : idx + opacities_size]
+    opacities = (
+        autoencoder_output[idx : idx + opacities_size].clone().detach().view(1024)
+    )
     idx += opacities_size
 
     colors_size = 1024 * 4 * 3  # 12288 elements
-    colors = autoencoder_output[idx : idx + colors_size].view(1024, 4, 3)
+    colors = (
+        autoencoder_output[idx : idx + colors_size].clone().detach().view(1024, 4, 3)
+    )
 
     # Reconstruct the parameter dictionary
     parameter_dict = {
@@ -243,6 +247,19 @@ def transform_autoencoder_output(
         {key: torch.nn.Parameter(value) for key, value in parameter_dict.items()}
     )
     return parameter_dict
+
+
+def noop_collate(batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]]) -> Any:
+    """
+    No-op collate function that returns the batch as is.
+
+    Args:
+        batch (List[Tuple[torch.Tensor, int, Dict[str, Any]]]): A batch of data tuples.
+
+    Returns:
+        Any: The batch as is.
+    """
+    return batch
 
 
 def transform_and_collate(

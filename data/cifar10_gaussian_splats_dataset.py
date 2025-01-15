@@ -1,18 +1,20 @@
 import os
 import torch
+import random
 from pathlib import Path
 from utils import load_gs_data
 from torch.utils.data import Dataset
+from typing import Any, Callable, Dict, Optional, Tuple
 
 
 class CIFAR10GaussianSplatsDataset(Dataset):
 
     def __init__(
         self,
-        root,
-        train=True,
-        init_type="knn",  # grid or knn
-        transform=None,
+        root: str,
+        train: bool = True,
+        init_type: str = "grid",  # grid or knn
+        transform: Optional[Callable] = None,
     ):
         """
         Args:
@@ -44,10 +46,10 @@ class CIFAR10GaussianSplatsDataset(Dataset):
             "truck": 9,
         }
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.file_names)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int, Dict[str, Any]]:
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
@@ -60,3 +62,6 @@ class CIFAR10GaussianSplatsDataset(Dataset):
             image = self.transform(image)
 
         return image, label, params
+
+    def shuffle(self):
+        random.shuffle(self.file_names)

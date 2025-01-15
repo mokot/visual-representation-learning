@@ -3,10 +3,12 @@ import torch
 from PIL import Image
 from pathlib import Path
 from torchvision import datasets
-from typing import Dict, List, Tuple
 from torch.utils.data import DataLoader
 from constants import CIFAR10_TRANSFORM
 from utils.image import tensor_to_image
+from typing import Any, Dict, List, Tuple
+from constants.splats import CIFAR10_KS, CIFAR10_VIEWMATS
+
 
 def load_cifar10(
     batch_size: int = 64,
@@ -159,4 +161,119 @@ def load_gs_data(
     )
     splat.load_state_dict(data["splat"])
 
+    # Rename color to colors
+    if "color" in splat:
+        splat["colors"] = splat.pop("color")
+
     return image, data["label"], splat
+
+
+def transform_autoencoder_input(
+    parameter_dict: Dict[str, torch.Tensor]
+) -> torch.Tensor:
+    """
+    Transforms the Gaussian splat parameters into a flattened input format suitable for an autoencoder.
+
+    Args:
+        parameter_dict (dict): Dictionary containing Gaussian splat parameters.
+
+    Returns:
+        torch.FloatTensor: Flattened tensor representing the input.
+    """
+    means = parameter_dict["means"].clone().detach().view(-1)  # Flatten 1024x3
+    quats = parameter_dict["quats"].clone().detach().view(-1)  # Flatten 1024x4
+    scales = parameter_dict["scales"].clone().detach().view(-1)  # Flatten 1024x3
+    opacities = parameter_dict["opacities"].clone().detach().view(-1)  # Flatten 1024
+    colors = parameter_dict["colors"].clone().detach().view(-1)  # Flatten 1024x4x3
+    # Ks = parameter_dict["Ks"].clone().detach().view(-1)  # Flatten 3x3 matrix
+    # viewmats = parameter_dict["viewmats"].clone().detach().view(-1)  # Flatten 4x4
+
+    # Concatenate all parameters into a single 1D tensor
+    autoencoder_input = torch.cat([means, quats, scales, opacities, colors])
+    return autoencoder_input
+
+
+def transform_autoencoder_output(
+    autoencoder_output: torch.Tensor,
+) -> Dict[str, torch.Tensor]:
+    """
+    Reconstructs the Gaussian splat parameter dictionary from the autoencoder output.
+
+    Args:
+        autoencoder_output (torch.FloatTensor): Flattened tensor from the autoencoder output.
+
+    Returns:
+        dict: Reconstructed parameter dictionary.
+    """
+    # Reconstruct each parameter from the flattened tensor
+    idx = 0
+
+    means_size = 1024 * 3  # 3072 elements
+    means = autoencoder_output[idx : idx + means_size].clone().detach().view(1024, 3)
+    idx += means_size
+
+    quats_size = 1024 * 4  # 4096 elements
+    quats = autoencoder_output[idx : idx + quats_size].clone().detach().view(1024, 4)
+    idx += quats_size
+
+    scales_size = 1024 * 3  # 3072 elements
+    scales = autoencoder_output[idx : idx + scales_size].clone().detach().view(1024, 3)
+    idx += scales_size
+
+    opacities_size = 1024  # 1024 elements
+    opacities = (
+        autoencoder_output[idx : idx + opacities_size].clone().detach().view(1024)
+    )
+    idx += opacities_size
+
+    colors_size = 1024 * 4 * 3  # 12288 elements
+    colors = (
+        autoencoder_output[idx : idx + colors_size].clone().detach().view(1024, 4, 3)
+    )
+
+    # Reconstruct the parameter dictionary
+    parameter_dict = {
+        "means": means,
+        "quats": quats,
+        "scales": scales,
+        "opacities": opacities,
+        "colors": colors,
+        "Ks": CIFAR10_KS,
+        "viewmats": CIFAR10_VIEWMATS,
+    }
+
+    # Convert to nn.ParameterDict
+    parameter_dict = torch.nn.ParameterDict(
+        {key: torch.nn.Parameter(value) for key, value in parameter_dict.items()}
+    )
+    return parameter_dict
+
+
+def noop_collate(batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]]) -> Any:
+    """
+    No-op collate function that returns the batch as is.
+
+    Args:
+        batch (List[Tuple[torch.Tensor, int, Dict[str, Any]]]): A batch of data tuples.
+
+    Returns:
+        Any: The batch as is.
+    """
+    return batch
+
+
+def transform_and_collate(
+    batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]]
+) -> torch.Tensor:
+    """
+    Transforms and collates a batch of data for the autoencoder model.
+
+    Args:
+        batch (List[Tuple[torch.Tensor, int, Dict[str, Any]]]): A batch of data tuples.
+
+    Returns:
+        torch.Tensor: The transformed and collated batch.
+    """
+    # Extract and transform the last element of each tuple
+    transformed_data = [transform_autoencoder_input(item[-1]) for item in batch]
+    return torch.utils.data.dataloader.default_collate(transformed_data)

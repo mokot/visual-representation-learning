@@ -1,0 +1,11 @@
+1. Pripravi transformacijo za v AE in potem nazaj
+2. Pripravi shallow, deep in basic AE
+3. Prpravi pipeline za ucenje, evalvacijo in testiranje
+
+Additional Tip
+
+If you have access to domain knowledge or specific metrics, you can also guide the choice:
+
+    Use Principal Component Analysis (PCA) on your dataset to estimate the number of significant components.
+    Select a latent dimension that captures ~95% of the variance in your data.
+

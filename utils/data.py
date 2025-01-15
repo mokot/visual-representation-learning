@@ -161,10 +161,14 @@ def load_gs_data(
     )
     splat.load_state_dict(data["splat"])
 
+    # Rename color to colors
+    if "color" in splat:
+        splat["colors"] = splat.pop("color")
+
     return image, data["label"], splat
 
 
-def transform_to_autoencoder_input(
+def transform_autoencoder_input(
     parameter_dict: Dict[str, torch.Tensor]
 ) -> torch.Tensor:
     """
@@ -189,7 +193,7 @@ def transform_to_autoencoder_input(
     return autoencoder_input
 
 
-def reverse_transform_autoencoder_output(
+def transform_autoencoder_output(
     autoencoder_output: torch.Tensor,
 ) -> Dict[str, torch.Tensor]:
     """
@@ -233,4 +237,9 @@ def reverse_transform_autoencoder_output(
         "Ks": CIFAR10_KS,
         "viewmats": CIFAR10_VIEWMATS,
     }
+
+    # Convert to nn.ParameterDict
+    parameter_dict = torch.nn.ParameterDict(
+        {key: torch.nn.Parameter(value) for key, value in parameter_dict.items()}
+    )
     return parameter_dict

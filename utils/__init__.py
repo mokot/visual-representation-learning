@@ -6,6 +6,8 @@ from .data import (
     collect_class_images,
     save_gs_data,
     load_gs_data,
+    transform_autoencoder_input,
+    transform_autoencoder_output,
 )
 from .file import save_gif, save_tensor, append_log
 from .image import image_path_to_tensor, preprocess_image, tensor_to_image
@@ -37,6 +39,8 @@ __all__ = [
     "collect_class_images",
     "save_gs_data",
     "load_gs_data",
+    "transform_autoencoder_input",
+    "transform_autoencoder_output",
     "save_gif",
     "save_tensor",
     "append_log",

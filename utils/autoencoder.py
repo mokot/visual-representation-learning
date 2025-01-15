@@ -75,7 +75,7 @@ def train(
         history["train_loss"].append(train_loss)
 
         # Validation phase
-        val_loss = model.evaluate(val_loader, criterion, device, None)
+        val_loss = evaluate(val_loader, criterion, device, None)
         history["val_loss"].append(val_loss)
 
         # Scheduler step

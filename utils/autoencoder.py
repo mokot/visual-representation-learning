@@ -75,7 +75,7 @@ def train(
         history["train_loss"].append(train_loss)
 
         # Validation phase
-        val_loss = evaluate(val_loader, criterion, device, None)
+        val_loss = evaluate(model, val_loader, criterion, device, None)
         history["val_loss"].append(val_loss)
 
         # Scheduler step
@@ -83,8 +83,8 @@ def train(
             scheduler.step(val_loss)
 
         # Logging
-        log_message = f"Epoch {epoch + 1}/{epochs} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}"
         if logger:
+            log_message = f"Epoch {epoch + 1}/{epochs} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}"
             logger(log_message)
 
         # Early stopping (patience)

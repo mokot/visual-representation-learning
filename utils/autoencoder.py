@@ -62,7 +62,6 @@ def train(
             x = x.to(device)
             optimizer.zero_grad()
             x_hat = model(x)
-            # TODO: check that x has not changed!
             loss = criterion(x_hat, x)
             loss.backward()
 
@@ -82,8 +81,6 @@ def train(
         # Scheduler step
         if scheduler:
             scheduler.step(val_loss)
-
-        # TODO: Implement some kind of regularization (e.g., L2, dropout, etc.)
 
         # Logging
         if logger:

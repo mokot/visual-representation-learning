@@ -456,26 +456,6 @@ class GaussianImageTrainer:
                     packed=False or cfg.sparse_gradient,
                     sh_degree=cfg.sh_degree,
                 )
-
-                render_colors = render_colors[0]
-                if render_colors.shape[-1] == 4:
-                    render_colors = render_colors[..., :3]
-                elif len(render_colors.shape) == 3 and render_colors.shape[-1] > 3:
-                    render_colors = render_colors[..., :3]
-
-                if cfg.bilateral_grid:
-                    grid_y, grid_x = torch.meshgrid(
-                        (torch.arange(self.H, device=self.device) + 0.5) / self.H,
-                        (torch.arange(self.W, device=self.device) + 0.5) / self.W,
-                        indexing="ij",
-                    )
-                    grid_xy = torch.stack([grid_x, grid_y], dim=-1).unsqueeze(0)
-                    colors = slice(
-                        self.bilateral_grids,
-                        grid_xy,
-                        colors,
-                        torch.zeros((self.H, self.W, 1)),
-                    )["rgb"]
             elif self.model_type == "2dgs-inria":
                 renders, info = rasterization_2dgs_inria_wrapper(
                     means=means,
@@ -516,6 +496,26 @@ class GaussianImageTrainer:
 
             torch.cuda.synchronize()
             times[0] += time.time() - start
+
+            render_colors = render_colors[0]
+            if render_colors.shape[-1] == 4:
+                render_colors = render_colors[..., :3]
+            elif len(render_colors.shape) == 3 and render_colors.shape[-1] > 3:
+                render_colors = render_colors[..., :3]
+
+            if cfg.bilateral_grid:
+                grid_y, grid_x = torch.meshgrid(
+                    (torch.arange(self.H, device=self.device) + 0.5) / self.H,
+                    (torch.arange(self.W, device=self.device) + 0.5) / self.W,
+                    indexing="ij",
+                )
+                grid_xy = torch.stack([grid_x, grid_y], dim=-1).unsqueeze(0)
+                colors = slice(
+                    self.bilateral_grids,
+                    grid_xy,
+                    colors,
+                    torch.zeros((self.H, self.W, 1)),
+                )["rgb"]
 
             if not cfg.group_optimization and cfg.strategy == "default":
                 self.strategy.step_pre_backward(

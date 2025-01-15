@@ -4,3 +4,6 @@
 [submodule "submodules/bilarf"]
 	path = submodules/bilarf
 	url = https://github.com/yuehaowang/bilarf
+[submodule "submodules/author-kit"]
+	path = submodules/author-kit
+	url = https://github.com/cvpr-org/author-kit

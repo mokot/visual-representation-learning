@@ -1,8 +1,11 @@
 from .search_space import GRID_SEARCH_SPACE_TEST
+from .splats import CIFAR10_KS, CIFAR10_VIEWMATS
 from .transforms import CIFAR10_TRANSFORM, CIFAR10_INVERSE_TRANSFORM
 
 __all__ = [
     "GRID_SEARCH_SPACE_TEST",
+    "CIFAR10_KS",
+    "CIFAR10_VIEWMATS",
     "CIFAR10_TRANSFORM",
     "CIFAR10_INVERSE_TRANSFORM",
 ]

@@ -7,6 +7,8 @@ from typing import Dict, List, Tuple
 from torch.utils.data import DataLoader
 from constants import CIFAR10_TRANSFORM
 from utils.image import tensor_to_image
+from constants.splats import CIFAR10_KS, CIFAR10_VIEWMATS
+
 
 def load_cifar10(
     batch_size: int = 64,
@@ -160,3 +162,75 @@ def load_gs_data(
     splat.load_state_dict(data["splat"])
 
     return image, data["label"], splat
+
+
+def transform_to_autoencoder_input(
+    parameter_dict: Dict[str, torch.Tensor]
+) -> torch.Tensor:
+    """
+    Transforms the Gaussian splat parameters into a flattened input format suitable for an autoencoder.
+
+    Args:
+        parameter_dict (dict): Dictionary containing Gaussian splat parameters.
+
+    Returns:
+        torch.FloatTensor: Flattened tensor representing the input.
+    """
+    means = parameter_dict["means"].view(-1)  # Flatten 1024x3
+    quats = parameter_dict["quats"].view(-1)  # Flatten 1024x4
+    scales = parameter_dict["scales"].view(-1)  # Flatten 1024x3
+    opacities = parameter_dict["opacities"].view(-1)  # Flatten 1024
+    colors = parameter_dict["colors"].view(-1)  # Flatten 1024x4x3
+    # Ks = parameter_dict["Ks"].view(-1)  # Flatten 3x3 matrix
+    # viewmats = parameter_dict["viewmats"].view(-1)  # Flatten 4x4
+
+    # Concatenate all parameters into a single 1D tensor
+    autoencoder_input = torch.cat([means, quats, scales, opacities, colors])
+    return autoencoder_input
+
+
+def reverse_transform_autoencoder_output(
+    autoencoder_output: torch.Tensor,
+) -> Dict[str, torch.Tensor]:
+    """
+    Reconstructs the Gaussian splat parameter dictionary from the autoencoder output.
+
+    Args:
+        autoencoder_output (torch.FloatTensor): Flattened tensor from the autoencoder output.
+
+    Returns:
+        dict: Reconstructed parameter dictionary.
+    """
+    # Reconstruct each parameter from the flattened tensor
+    idx = 0
+
+    means_size = 1024 * 3  # 3072 elements
+    means = autoencoder_output[idx : idx + means_size].view(1024, 3)
+    idx += means_size
+
+    quats_size = 1024 * 4  # 4096 elements
+    quats = autoencoder_output[idx : idx + quats_size].view(1024, 4)
+    idx += quats_size
+
+    scales_size = 1024 * 3  # 3072 elements
+    scales = autoencoder_output[idx : idx + scales_size].view(1024, 3)
+    idx += scales_size
+
+    opacities_size = 1024  # 1024 elements
+    opacities = autoencoder_output[idx : idx + opacities_size]
+    idx += opacities_size
+
+    colors_size = 1024 * 4 * 3  # 12288 elements
+    colors = autoencoder_output[idx : idx + colors_size].view(1024, 4, 3)
+
+    # Reconstruct the parameter dictionary
+    parameter_dict = {
+        "means": means,
+        "quats": quats,
+        "scales": scales,
+        "opacities": opacities,
+        "colors": colors,
+        "Ks": CIFAR10_KS,
+        "viewmats": CIFAR10_VIEWMATS,
+    }
+    return parameter_dict

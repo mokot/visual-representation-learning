@@ -1,0 +1,25 @@
+# FONT
+font.family : monospace
+font.style : normal
+font.size : 8
+text.color : w
+
+# AXES
+axes.facecolor : 10121A
+axes.grid : True
+axes.labelsize : small
+axes.labelcolor : w
+axes.ymargin : 0.1
+axes.xmargin : 0
+axes.axisbelow : True
+
+# FIGURE
+figure.facecolor : 171922
+
+# GRID
+grid.color : 272D3C
+
+# TICK
+xtick.color : w
+ytick.color : w
+xtick.minor.size : 0

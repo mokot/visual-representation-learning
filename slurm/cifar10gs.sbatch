@@ -20,8 +20,8 @@ mkdir -p logs
 # Determine if processing train or test set
 if [ $SLURM_ARRAY_TASK_ID -lt 10 ]; then
     # Process training set (chunks 0-9)
-    python create_cifar10gs_dataset.py --chunk_id $SLURM_ARRAY_TASK_ID --train
+    python ../data/create_cifar10gs_dataset.py --chunk_id $SLURM_ARRAY_TASK_ID --train
 else
     # Process test set (chunks 10-11)
-    python create_cifar10gs_dataset.py --chunk_id $((SLURM_ARRAY_TASK_ID - 10))
-fi 
+    python ../data/create_cifar10gs_dataset.py --chunk_id $((SLURM_ARRAY_TASK_ID - 10))
+fi

@@ -7,3 +7,6 @@
 [submodule "submodules/author-kit"]
 	path = submodules/author-kit
 	url = https://github.com/cvpr-org/author-kit
+[submodule "submodules/resnet-18-autoencoder"]
+	path = submodules/resnet-18-autoencoder
+	url = https://github.com/eleannavali/resnet-18-autoencoder

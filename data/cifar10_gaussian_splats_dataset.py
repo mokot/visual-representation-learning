@@ -12,21 +12,27 @@ class CIFAR10GaussianSplatsDataset(Dataset):
     def __init__(
         self,
         root: str,
-        train: bool = True,
+        train: bool = False,
+        val: bool = False,
+        test: bool = False,
         init_type: str = "grid",  # grid or knn
         transform: Optional[Callable] = None,
     ):
         """
         Args:
             root (str): Base directory containing all folders for different init types.
-            train (bool): If True, loads training split. If False, loads test split.
+            train (bool): If True, loads training split. If False, nothing is loaded.
+            val (bool): If True, loads validation split. If False, nothing is loaded.
+            test (bool): If True, loads test split. If False, nothing is loaded.
             init_type (str): Subdirectory corresponding to the initialization type ['grid' or 'knn'].
             transform (callable, optional): Optional transform to be applied on a PIL image.
         """
-        self.root = os.path.join(root, init_type, "train" if train else "test")
+        path_flag = "train" if train else "val" if val else "test" if test else None
+        assert path_flag, "At least one of 'train', 'val' or 'test' must be True."
+        self.root = os.path.join(root, init_type, path_flag)
         if not os.path.exists(self.root):
             raise ValueError(
-                f"The folder for init_type '{init_type}' and split {'train' if train else 'test'} does not exist in {root}."
+                f"The folder for init_type '{init_type}' and split {path_flag} does not exist in {root}."
             )
 
         self.file_names = [f for f in os.listdir(self.root) if f.endswith(".pt")]

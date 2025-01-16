@@ -8,6 +8,7 @@ from constants import CIFAR10_TRANSFORM
 from utils.image import tensor_to_image
 from typing import Any, Dict, List, Tuple
 from constants.splats import CIFAR10_KS, CIFAR10_VIEWMATS
+from utils.normalization import normalize_to_neg_one_one, denormalize_from_neg_one_one
 
 
 def load_cifar10(
@@ -190,6 +191,11 @@ def transform_autoencoder_input(
 
     # Concatenate all parameters into a single 1D tensor
     autoencoder_input = torch.cat([means, quats, scales, opacities, colors])
+
+    # Normalize the input to the range [-1, 1]
+    autoencoder_input = normalize_to_neg_one_one(
+        autoencoder_input, autoencoder_input.min(), autoencoder_input.max()
+    )
     return autoencoder_input
 
 
@@ -205,6 +211,11 @@ def transform_autoencoder_output(
     Returns:
         dict: Reconstructed parameter dictionary.
     """
+    # Denormalize the output to the original range
+    autoencoder_output = denormalize_from_neg_one_one(
+        autoencoder_output, autoencoder_output.min(), autoencoder_output.max()
+    )
+
     # Reconstruct each parameter from the flattened tensor
     idx = 0
 

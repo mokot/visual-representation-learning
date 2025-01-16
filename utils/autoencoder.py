@@ -1,7 +1,7 @@
-import tqdm
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import tqdm as notebook_tqdm
 from typing import Callable, Optional, List, Dict, Union, Tuple
 from utils.data import transform_autoencoder_input, transform_autoencoder_output
 
@@ -56,7 +56,7 @@ def train(
         # Training phase
         model.train()
         train_loss = 0.0
-        for x in tqdm.tqdm(
+        for x in notebook_tqdm.tqdm(
             train_loader, unit="batch", desc=f"Epoch {epoch + 1}/{epochs}"
         ):
             x = x.to(device)

@@ -1,4 +1,4 @@
-from tqdm import tqdm
+import tqdm as notebook_tqdm
 
 
 def get_progress_bar(iterable, max_steps=None, description="Progress", color="cyan"):
@@ -14,7 +14,7 @@ def get_progress_bar(iterable, max_steps=None, description="Progress", color="cy
     Returns:
         tqdm: Configured tqdm progress bar.
     """
-    return tqdm(
+    return notebook_tqdm.tqdm(
         iterable,
         desc=description,
         total=max_steps,

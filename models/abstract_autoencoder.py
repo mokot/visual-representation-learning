@@ -37,6 +37,16 @@ class AbstractAutoencoder(nn.Module, ABC):
             raise NotImplementedError("Decoder is not defined.")
         return self.decoder(x)
 
+    def init_weights(self):
+        """
+        Initializes the weights of the model using Xavier initialization.
+        """
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+
     def save(self: nn.Module, path: Path) -> None:
         """
         Saves the model state dictionary to the specified path.

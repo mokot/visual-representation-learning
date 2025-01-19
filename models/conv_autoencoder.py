@@ -3,7 +3,6 @@ from .abstract_autoencoder import AbstractAutoencoder
 
 
 class ConvAutoencoder(AbstractAutoencoder):
-
     def __init__(
         self,
         channels_dim: int,
@@ -24,11 +23,23 @@ class ConvAutoencoder(AbstractAutoencoder):
         )
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(
-                128, 64, kernel_size=3, stride=2, output_padding=1, bias=use_bias
+                128,
+                64,
+                kernel_size=3,
+                stride=2,
+                padding=1,
+                output_padding=1,
+                bias=use_bias,
             ),
             nn.ReLU(inplace=True),
             nn.ConvTranspose2d(
-                64, 32, kernel_size=3, stride=2, output_padding=1, bias=use_bias
+                64,
+                32,
+                kernel_size=3,
+                stride=2,
+                padding=1,
+                output_padding=1,
+                bias=use_bias,
             ),
             nn.ReLU(inplace=True),
             nn.ConvTranspose2d(
@@ -36,6 +47,7 @@ class ConvAutoencoder(AbstractAutoencoder):
                 channels_dim,
                 kernel_size=3,
                 stride=2,
+                padding=1,
                 output_padding=1,
                 bias=use_bias,
             ),

@@ -2,7 +2,7 @@ import torch.nn as nn
 from .abstract_autoencoder import AbstractAutoencoder
 
 
-class DeepAutoencoder(AbstractAutoencoder):
+class DeepFlatAutoencoder(AbstractAutoencoder):
 
     def __init__(
         self,
@@ -11,7 +11,7 @@ class DeepAutoencoder(AbstractAutoencoder):
         use_bias: bool = True,
         weight_init: bool = True,
     ):
-        super(DeepAutoencoder, self).__init__()
+        super(DeepFlatAutoencoder, self).__init__()
         self.encoder = nn.Sequential(
             nn.Linear(input_dim, 8192, bias=use_bias),
             nn.ReLU(inplace=True),

@@ -439,6 +439,7 @@ def transform_and_collate(
         join_mode (str): Determines how to concatenate tensors:
             - "flatten": Flatten all tensors and concatenate them, result is a 1D tensor.
             - "concat": Concatenate all tensors along the channel, result is a 2D tensor (32x32xN).
+                        Note that if batch = 1, model will learn features separately, otherwise combined.
             - "dict": Converts to 2D tensor and returns as a dictionary.
 
     Returns:
@@ -448,4 +449,10 @@ def transform_and_collate(
     transformed_data = [
         transform_autoencoder_input(item[-1], join_mode) for item in batch
     ]
+
+    # If only one element in the batch, unsqueeze the tensor along the channel dimension
+    if len(transformed_data) == 1 and join_mode == "concat":
+        temp_data = transformed_data[0]
+        transformed_data = [temp_data[i].unsqueeze(0) for i in range(len(temp_data))]
+
     return torch.utils.data.dataloader.default_collate(transformed_data)

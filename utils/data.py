@@ -170,14 +170,14 @@ def load_gs_data(
 
 
 def transform_autoencoder_input(
-    parameter_dict: Dict[str, torch.Tensor], concat_mode: str = "flatten"
+    parameter_dict: Dict[str, torch.Tensor], join_mode: str = "flatten"
 ) -> torch.Tensor | Dict[str, torch.Tensor]:
     """
     Transforms the Gaussian splat parameters into a flattened input format suitable for an autoencoder.
 
     Args:
         parameter_dict (dict): Dictionary containing Gaussian splat parameters.
-        concat_mode (str): Determines how to concatenate tensors:
+        join_mode (str): Determines how to concatenate tensors:
             - "flatten": Flatten all tensors and concatenate them, result is a 1D tensor.
             - "concat": Concatenate all tensors along the channel, result is a 2D tensor (32x32xN).
             - "dict": Converts to 2D tensor and returns as a dictionary.
@@ -193,7 +193,7 @@ def transform_autoencoder_input(
     # Ks = parameter_dict["Ks"].clone().detach()  # 3x3
     # viewmats = parameter_dict["viewmats"].clone().detach()  # 4x4
 
-    if concat_mode == "flatten":
+    if join_mode == "flatten":
         means = means.view(-1)
         quats = quats.view(-1)
         scales = scales.view(-1)
@@ -207,7 +207,7 @@ def transform_autoencoder_input(
         autoencoder_input = normalize_to_neg_one_one(
             autoencoder_input, autoencoder_input.min(), autoencoder_input.max()
         )
-    elif concat_mode == "concat":
+    elif join_mode == "concat":
         means = means.view(32, 32, -1)
         quats = quats.view(32, 32, -1)
         scales = scales.view(32, 32, -1)
@@ -224,7 +224,10 @@ def transform_autoencoder_input(
                 autoencoder_input[:, :, i].min(),
                 autoencoder_input[:, :, i].max(),
             )
-    elif concat_mode == "dict":
+
+        # Permute values from [32, 32, N] to [N, 32, 32]
+        autoencoder_input = autoencoder_input.permute(2, 0, 1)
+    elif join_mode == "dict":
         parameter_dict = {
             "means": means,
             "quats": quats,
@@ -254,21 +257,21 @@ def transform_autoencoder_input(
         )
 
     else:
-        raise ValueError(f"Invalid concat_mode: {concat_mode}")
+        raise ValueError(f"Invalid join_mode: {join_mode}")
 
     return autoencoder_input
 
 
 def transform_autoencoder_output(
     autoencoder_output: torch.Tensor | Dict[str, torch.Tensor],
-    concat_mode: str = "flatten",
+    join_mode: str = "flatten",
 ) -> Dict[str, torch.Tensor]:
     """
     Reconstructs the Gaussian splat parameter dictionary from the autoencoder output.
 
     Args:
         autoencoder_output (torch.FloatTensor): Flattened tensor from the autoencoder output.
-        concat_mode (str): Determines how to concatenate tensors:
+        join_mode (str): Determines how to concatenate tensors:
             - "flatten": Flatten all tensors and concatenate them, result is a 1D tensor.
             - "concat": Concatenate all tensors along the channel, result is a 2D tensor (32x32xN).
             - "dict": Converts to 2D tensor and returns as a dictionary.
@@ -276,7 +279,7 @@ def transform_autoencoder_output(
     Returns:
         dict: Reconstructed parameter dictionary.
     """
-    if concat_mode == "flatten":
+    if join_mode == "flatten":
         # Denormalize the output to the original range
         autoencoder_output = denormalize_from_neg_one_one(
             autoencoder_output, autoencoder_output.min(), autoencoder_output.max()
@@ -317,7 +320,10 @@ def transform_autoencoder_output(
             .view(1024, 4, 3)
         )
 
-    elif concat_mode == "concat":
+    elif join_mode == "concat":
+        # Permute values from [N, 32, 32] to [32, 32, N]
+        autoencoder_output = autoencoder_output.permute(1, 2, 0)
+
         # Denormalize the output to the original range along each channel
         for i in range(autoencoder_output.size(2)):
             autoencoder_output[:, :, i] = denormalize_from_neg_one_one(
@@ -372,7 +378,7 @@ def transform_autoencoder_output(
             .detach()
             .view(1024, 4, 3)
         )
-    elif concat_mode == "dict":
+    elif join_mode == "dict":
         # Denormalize the output to the original range along each channel
         for _, value in autoencoder_output.items():
             for i in range(value.size(2)):
@@ -388,7 +394,7 @@ def transform_autoencoder_output(
         opacities = autoencoder_output["opacities"].view(1024)
         colors = autoencoder_output["colors"].view(1024, 4, 3)
     else:
-        raise ValueError(f"Invalid concat_mode: {concat_mode}")
+        raise ValueError(f"Invalid join_mode: {join_mode}")
 
     # Reconstruct the parameter dictionary
     parameter_dict = {
@@ -422,17 +428,24 @@ def noop_collate(batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]]) -> Any:
 
 
 def transform_and_collate(
-    batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]]
+    batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]],
+    join_mode: str = "flatten",
 ) -> torch.Tensor:
     """
     Transforms and collates a batch of data for the autoencoder model.
 
     Args:
         batch (List[Tuple[torch.Tensor, int, Dict[str, Any]]]): A batch of data tuples.
+        join_mode (str): Determines how to concatenate tensors:
+            - "flatten": Flatten all tensors and concatenate them, result is a 1D tensor.
+            - "concat": Concatenate all tensors along the channel, result is a 2D tensor (32x32xN).
+            - "dict": Converts to 2D tensor and returns as a dictionary.
 
     Returns:
         torch.Tensor: The transformed and collated batch.
     """
     # Extract and transform the last element of each tuple
-    transformed_data = [transform_autoencoder_input(item[-1]) for item in batch]
+    transformed_data = [
+        transform_autoencoder_input(item[-1], join_mode) for item in batch
+    ]
     return torch.utils.data.dataloader.default_collate(transformed_data)

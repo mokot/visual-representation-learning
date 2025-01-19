@@ -30,7 +30,7 @@ class DeepAutoencoder(AbstractAutoencoder):
             nn.Linear(4096, 8192, bias=use_bias),
             nn.ReLU(inplace=True),
             nn.Linear(8192, input_dim, bias=use_bias),
-            nn.Tanh(),  # Values are in the range [-1, 1]
+            nn.Tanh(),  # Output [-1, 1]
         )
         if weight_init:
             self.init_weights()

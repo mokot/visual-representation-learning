@@ -1,5 +1,6 @@
 from .autoencoder import train, evaluate, test, transform
 from .color import convert_rgb_to_sh
+from .conv import conv3x3, conv1x1, conv3x3Transposed, conv1x1Transposed
 from .data import (
     load_cifar10,
     create_default_image,
@@ -38,6 +39,10 @@ __all__ = [
     "test",
     "transform",
     "convert_rgb_to_sh",
+    "conv3x3",
+    "conv1x1",
+    "conv3x3Transposed",
+    "conv1x1Transposed",
     "load_cifar10",
     "create_default_image",
     "collect_class_images",

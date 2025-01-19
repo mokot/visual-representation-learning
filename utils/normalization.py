@@ -15,7 +15,9 @@ def normalize_to_neg_one_one(
     Returns:
     torch.Tensor: The normalized tensor in the range [-1, 1].
     """
-    return 2 * (x - min_val) / (max_val - min_val) - 1
+    x = 2 * (x - min_val) / (max_val - min_val) - 1
+    x[x != x] = 0
+    return x
 
 
 def denormalize_from_neg_one_one(
@@ -32,4 +34,6 @@ def denormalize_from_neg_one_one(
     Returns:
     torch.Tensor: The denormalized tensor in the original range [min_val, max_val].
     """
-    return (x + 1) / 2 * (max_val - min_val) + min_val
+    x = (x + 1) / 2 * (max_val - min_val) + min_val
+    x[x != x] = 0
+    return x

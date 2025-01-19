@@ -1,5 +1,7 @@
+import time
 import torch
 import torch.nn as nn
+from pathlib import Path
 import torch.optim as optim
 import tqdm as notebook_tqdm
 from typing import Callable, Optional, List, Dict, Union, Tuple
@@ -18,6 +20,7 @@ def train(
     grad_clip: Optional[float] = None,
     logger: Optional[Callable[[str], None]] = print,
     compile_model: bool = False,
+    model_path: Optional[Path] = None,
 ) -> Dict[str, List[float]]:
     """
     Train the model on the training dataset and evaluate it on the validation dataset.
@@ -34,6 +37,7 @@ def train(
         grad_clip (Optional[float]): Gradient clipping threshold (if any).
         logger (Optional[Callable[[str], None]]): Function for logging progress (e.g., `print` or a custom logger).
         compile_model (bool): If True, compiles the model with `torch.compile` for optimization.
+        model_path (Optional[Path]): Path to save the trained.
 
     Returns:
         Dict[str, List[float]]: Dictionary containing training and validation losses for each epoch.
@@ -47,8 +51,11 @@ def train(
     # Patience for early stopping
     patience = 5
     patience_counter = 0
+    train_loss = 0.0
+    val_loss = 0.0
     best_val_loss = float("inf")
 
+    start = time.time()
     for epoch in range(epochs):
         # Shuffle the training data
         train_loader.dataset.shuffle()
@@ -96,10 +103,17 @@ def train(
             if patience_counter == patience:
                 if logger:
                     logger(f"Stopping early after {epoch + 1} epochs.")
-                # TODO: save the best model
                 break
 
-    # TODO: save the best model
+    stop = time.time()
+    if logger:
+        logger(
+            f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Training time: {stop - start:.2f}s"
+        )
+
+    if model_path:
+        model.save(model_path)
+
     return history
 
 
@@ -131,6 +145,7 @@ def evaluate(
     model.to(device)
     model.eval()
     loss = 0
+    start = time.time()
     with torch.no_grad():
         for x in val_loader:
             x = x.to(device)
@@ -138,8 +153,11 @@ def evaluate(
             loss += criterion(x_hat, x).item()
 
     avg_loss = loss / len(val_loader)
+    stop = time.time()
     if logger:
-        logger(f"Evaluation Loss: {avg_loss:.4f}")
+        logger(
+            f"Evaluation Loss: {avg_loss:.4f} | Evaluation time: {stop - start:.2f}s"
+        )
     return avg_loss
 
 
@@ -176,7 +194,7 @@ def test(
     loss = 0.0
     original_samples = []
     reconstructed_samples = []
-
+    start = time.time()
     with torch.no_grad():
         for x in test_loader:
             x = x.to(device)
@@ -189,9 +207,10 @@ def test(
                 reconstructed_samples.append(x_hat.cpu())
 
     avg_loss = loss / len(test_loader)
+    stop = time.time()
 
     if logger:
-        logger(f"Test Loss: {avg_loss:.4f}")
+        logger(f"Test Loss: {avg_loss:.4f} | Test time: {stop - start:.2f}s")
 
     if return_samples:
         return avg_loss, (original_samples, reconstructed_samples)

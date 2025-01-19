@@ -179,10 +179,11 @@ def transform_autoencoder_input(
         parameter_dict (dict): Dictionary containing Gaussian splat parameters.
         concat_mode (str): Determines how to concatenate tensors:
             - "flatten": Flatten all tensors and concatenate them, result is a 1D tensor.
-            - "concat": Concatenate all tensors along the channel, result is a 2D tensor (1024xN).
+            - "concat": Concatenate all tensors along the channel, result is a 2D tensor (32x32xN).
+            - "dict": Converts to 2D tensor and returns as a dictionary.
 
     Returns:
-        torch.FloatTensor: Transformed input tensor for the autoencoder.
+        torch.FloatTensor | dict: Transformed input tensor or dictionary.
     """
     means = parameter_dict["means"].clone().detach()  # 1024x3
     quats = parameter_dict["quats"].clone().detach()  # 1024x4
@@ -207,22 +208,51 @@ def transform_autoencoder_input(
             autoencoder_input, autoencoder_input.min(), autoencoder_input.max()
         )
     elif concat_mode == "concat":
-        means = means.view(1024, -1)
-        quats = quats.view(1024, -1)
-        scales = scales.view(1024, -1)
-        opacities = opacities.view(1024, -1)
-        colors = colors.view(1024, -1)
+        means = means.view(32, 32, -1)
+        quats = quats.view(32, 32, -1)
+        scales = scales.view(32, 32, -1)
+        opacities = opacities.view(32, 32, -1)
+        colors = colors.view(32, 32, -1)
 
         # Concatenate all parameters along the channel
-        autoencoder_input = torch.cat([means, quats, scales, opacities, colors], dim=1)
+        autoencoder_input = torch.cat([means, quats, scales, opacities, colors], dim=2)
 
         # Normalize the input to the range [-1, 1] along each channel
-        for i in range(autoencoder_input.size(1)):
-            autoencoder_input[:, i] = normalize_to_neg_one_one(
-                autoencoder_input[:, i],
-                autoencoder_input[:, i].min(),
-                autoencoder_input[:, i].max(),
+        for i in range(autoencoder_input.size(2)):
+            autoencoder_input[:, :, i] = normalize_to_neg_one_one(
+                autoencoder_input[:, :, i],
+                autoencoder_input[:, :, i].min(),
+                autoencoder_input[:, :, i].max(),
             )
+    elif concat_mode == "dict":
+        parameter_dict = {
+            "means": means,
+            "quats": quats,
+            "scales": scales,
+            "opacities": opacities,
+            "colors": colors,
+        }
+
+        # For each parameter, convert to 32x32 and normalize to [-1, 1]
+        for key, value in parameter_dict.items():
+            # Convert to 32x32
+            value = value.view(32, 32, -1)
+
+            # Normalize the input to the range [-1, 1] along each channel
+            for i in range(value.size(2)):
+                value[:, :, i] = normalize_to_neg_one_one(
+                    value[:, :, i],
+                    value[:, :, i].min(),
+                    value[:, :, i].max(),
+                )
+
+            parameter_dict[key] = value
+
+        # Convert to nn.ParameterDict
+        autoencoder_input = torch.nn.ParameterDict(
+            {key: torch.nn.Parameter(value) for key, value in parameter_dict.items()}
+        )
+
     else:
         raise ValueError(f"Invalid concat_mode: {concat_mode}")
 
@@ -230,7 +260,8 @@ def transform_autoencoder_input(
 
 
 def transform_autoencoder_output(
-    autoencoder_output: torch.Tensor, concat_mode: str = "flatten"
+    autoencoder_output: torch.Tensor | Dict[str, torch.Tensor],
+    concat_mode: str = "flatten",
 ) -> Dict[str, torch.Tensor]:
     """
     Reconstructs the Gaussian splat parameter dictionary from the autoencoder output.
@@ -239,7 +270,8 @@ def transform_autoencoder_output(
         autoencoder_output (torch.FloatTensor): Flattened tensor from the autoencoder output.
         concat_mode (str): Determines how to concatenate tensors:
             - "flatten": Flatten all tensors and concatenate them, result is a 1D tensor.
-            - "concat": Concatenate all tensors along the channel, result is a 2D tensor (1024xN).
+            - "concat": Concatenate all tensors along the channel, result is a 2D tensor (32x32xN).
+            - "dict": Converts to 2D tensor and returns as a dictionary.
 
     Returns:
         dict: Reconstructed parameter dictionary.
@@ -287,11 +319,11 @@ def transform_autoencoder_output(
 
     elif concat_mode == "concat":
         # Denormalize the output to the original range along each channel
-        for i in range(autoencoder_output.size(1)):
-            autoencoder_output[:, i] = denormalize_from_neg_one_one(
-                autoencoder_output[:, i],
-                autoencoder_output[:, i].min(),
-                autoencoder_output[:, i].max(),
+        for i in range(autoencoder_output.size(2)):
+            autoencoder_output[:, :, i] = denormalize_from_neg_one_one(
+                autoencoder_output[:, :, i],
+                autoencoder_output[:, :, i].min(),
+                autoencoder_output[:, :, i].max(),
             )
 
         # Reconstruct each parameter from the concatenated tensor
@@ -299,19 +331,25 @@ def transform_autoencoder_output(
 
         means_size = 3
         means = (
-            autoencoder_output[:, idx : idx + means_size].clone().detach().view(1024, 3)
+            autoencoder_output[:, :, idx : idx + means_size]
+            .clone()
+            .detach()
+            .view(1024, 3)
         )
         idx += means_size
 
         quats_size = 4
         quats = (
-            autoencoder_output[:, idx : idx + quats_size].clone().detach().view(1024, 4)
+            autoencoder_output[:, :, idx : idx + quats_size]
+            .clone()
+            .detach()
+            .view(1024, 4)
         )
         idx += quats_size
 
         scales_size = 3
         scales = (
-            autoencoder_output[:, idx : idx + scales_size]
+            autoencoder_output[:, :, idx : idx + scales_size]
             .clone()
             .detach()
             .view(1024, 3)
@@ -320,7 +358,7 @@ def transform_autoencoder_output(
 
         opacities_size = 1
         opacities = (
-            autoencoder_output[:, idx : idx + opacities_size]
+            autoencoder_output[:, :, idx : idx + opacities_size]
             .clone()
             .detach()
             .view(1024)
@@ -329,11 +367,26 @@ def transform_autoencoder_output(
 
         colors_size = 4 * 3
         colors = (
-            autoencoder_output[:, idx : idx + colors_size]
+            autoencoder_output[:, :, idx : idx + colors_size]
             .clone()
             .detach()
             .view(1024, 4, 3)
         )
+    elif concat_mode == "dict":
+        # Denormalize the output to the original range along each channel
+        for _, value in autoencoder_output.items():
+            for i in range(value.size(2)):
+                value = value.clone().detach()
+                value[:, :, i] = denormalize_from_neg_one_one(
+                    value[:, :, i], value[:, :, i].min(), value[:, :, i].max()
+                )
+
+        # Reconstruct each parameter from the concatenated tensor
+        means = autoencoder_output["means"].view(1024, 3)
+        quats = autoencoder_output["quats"].view(1024, 4)
+        scales = autoencoder_output["scales"].view(1024, 3)
+        opacities = autoencoder_output["opacities"].view(1024)
+        colors = autoencoder_output["colors"].view(1024, 4, 3)
     else:
         raise ValueError(f"Invalid concat_mode: {concat_mode}")
 

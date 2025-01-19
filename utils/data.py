@@ -249,13 +249,12 @@ def transform_autoencoder_input(
                     value[:, :, i].max(),
                 )
 
+            # Permute values from [32, 32, N] to [N, 32, 32]
+            value = value.permute(2, 0, 1)
+
             parameter_dict[key] = value
 
-        # Convert to nn.ParameterDict
-        autoencoder_input = torch.nn.ParameterDict(
-            {key: torch.nn.Parameter(value) for key, value in parameter_dict.items()}
-        )
-
+        autoencoder_input = parameter_dict
     else:
         raise ValueError(f"Invalid join_mode: {join_mode}")
 
@@ -379,6 +378,9 @@ def transform_autoencoder_output(
             .view(1024, 4, 3)
         )
     elif join_mode == "dict":
+        # Permute values from [N, 32, 32] to [32, 32, N]
+        autoencoder_output = autoencoder_output.permute(1, 2, 0)
+
         # Denormalize the output to the original range along each channel
         for _, value in autoencoder_output.items():
             for i in range(value.size(2)):
@@ -430,6 +432,7 @@ def noop_collate(batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]]) -> Any:
 def transform_and_collate(
     batch: List[Tuple[torch.Tensor, int, Dict[str, Any]]],
     join_mode: str = "flatten",
+    splat_param: str = "means",
 ) -> torch.Tensor:
     """
     Transforms and collates a batch of data for the autoencoder model.
@@ -441,6 +444,7 @@ def transform_and_collate(
             - "concat": Concatenate all tensors along the channel, result is a 2D tensor (32x32xN).
                         Note that if batch = 1, model will learn features separately, otherwise combined.
             - "dict": Converts to 2D tensor and returns as a dictionary.
+        splat_param (str) : The parameter to be used for the splatting operation.
 
     Returns:
         torch.Tensor: The transformed and collated batch.
@@ -449,6 +453,12 @@ def transform_and_collate(
     transformed_data = [
         transform_autoencoder_input(item[-1], join_mode) for item in batch
     ]
+
+    if join_mode == "dict":
+        for i in range(len(transformed_data)):
+            if splat_param not in transformed_data[i].keys():
+                raise ValueError(f"Invalid splat_param: {splat_param}")
+            transformed_data[i] = transformed_data[i][splat_param]
 
     # If only one element in the batch, unsqueeze the tensor along the channel dimension
     if len(transformed_data) == 1 and join_mode == "concat":

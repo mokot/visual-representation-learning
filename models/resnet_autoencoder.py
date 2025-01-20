@@ -5,17 +5,17 @@ from .abstract_autoencoder import AbstractAutoencoder
 from utils.conv import conv3x3, conv3x3Transposed
 
 
-class ResnetAutoencoder(AbstractAutoencoder):
+class ResNetAutoencoder(AbstractAutoencoder):
     def __init__(self):
-        super(ResnetAutoencoder, self).__init__()
-        self.encoder = ResnetEncoder([2, 2, 2])
-        self.decoder = ResnetDecoder([2, 2, 2])
+        super(ResNetAutoencoder, self).__init__()
+        self.encoder = ResNetEncoder([2, 2, 2])
+        self.decoder = ResNetDecoder([2, 2, 2])
 
 
 ### ---
 
 
-class ResnetEncoderBlock(nn.Module):
+class ResNetEncoderBlock(nn.Module):
     """The basic block architecture of resnet-18 network for smaller input images."""
 
     expansion: int = 1
@@ -64,7 +64,7 @@ class ResnetEncoderBlock(nn.Module):
         return out
 
 
-class ResnetEncoder(nn.Module):
+class ResNetEncoder(nn.Module):
     """The encoder model, following the architecture of resnet-18
     for smaller input images."""
 
@@ -98,16 +98,16 @@ class ResnetEncoder(nn.Module):
         self.conv1 = conv3x3(3, self.inplanes)
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
-        self.layer1 = self._make_layer(ResnetEncoderBlock, 16, layers[0])
+        self.layer1 = self._make_layer(ResNetEncoderBlock, 16, layers[0])
         self.layer2 = self._make_layer(
-            ResnetEncoderBlock,
+            ResNetEncoderBlock,
             32,
             layers[1],
             stride=2,
             dilate=replace_stride_with_dilation[0],
         )
         self.layer3 = self._make_layer(
-            ResnetEncoderBlock,
+            ResNetEncoderBlock,
             64,
             layers[2],
             stride=2,
@@ -126,12 +126,12 @@ class ResnetEncoder(nn.Module):
         # This improves the model by 0.2~0.3% according to https://arxiv.org/abs/1706.02677
         if zero_init_residual:
             for m in self.modules():
-                if isinstance(m, ResnetEncoderBlock) and m.bn2.weight is not None:
+                if isinstance(m, ResNetEncoderBlock) and m.bn2.weight is not None:
                     nn.init.constant_(m.bn2.weight, 0)  # type: ignore[arg-type]
 
     def _make_layer(
         self,
-        block: Type[ResnetEncoderBlock],
+        block: Type[ResNetEncoderBlock],
         planes: int,
         blocks: int,
         stride: int = 1,
@@ -195,7 +195,7 @@ class ResnetEncoder(nn.Module):
 ### ---
 
 
-class ResnetDecoderBlock(nn.Module):
+class ResNetDecoderBlock(nn.Module):
     """The basic block architecture of resnet-18 network for smaller input images."""
 
     expansion: int = 1
@@ -247,7 +247,7 @@ class ResnetDecoderBlock(nn.Module):
         return out
 
 
-class ResnetDecoder(nn.Module):
+class ResNetDecoder(nn.Module):
     """The decoder model, following the architecture of resnet-18
     for smaller input images."""
 
@@ -272,10 +272,10 @@ class ResnetDecoder(nn.Module):
         self.bn1 = norm_layer(3)
         self.relu = nn.ReLU(inplace=True)
 
-        self.layer3 = self._make_layer(ResnetDecoderBlock, 64, layers[2], stride=2)
-        self.layer2 = self._make_layer(ResnetDecoderBlock, 32, layers[1], stride=2)
+        self.layer3 = self._make_layer(ResNetDecoderBlock, 64, layers[2], stride=2)
+        self.layer2 = self._make_layer(ResNetDecoderBlock, 32, layers[1], stride=2)
         self.layer1 = self._make_layer(
-            ResnetDecoderBlock,
+            ResNetDecoderBlock,
             16,
             layers[0],
             stride=1,
@@ -295,12 +295,12 @@ class ResnetDecoder(nn.Module):
         # This improves the model by 0.2~0.3% according to https://arxiv.org/abs/1706.02677
         if zero_init_residual:
             for m in self.modules():
-                if isinstance(m, ResnetDecoderBlock) and m.bn2.weight is not None:
+                if isinstance(m, ResNetDecoderBlock) and m.bn2.weight is not None:
                     nn.init.constant_(m.bn2.weight, 0)  # type: ignore[arg-type]
 
     def _make_layer(
         self,
-        block: Type[ResnetDecoderBlock],
+        block: Type[ResNetDecoderBlock],
         planes: int,
         blocks: int,
         stride: int = 2,

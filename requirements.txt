@@ -3,6 +3,10 @@ tqdm
 numpy
 torch
 gsplat
+optuna
+plotly
+kaleido
+nbformat
 tensorly
 ipykernel
 matplotlib
@@ -10,7 +14,4 @@ tensorboard
 torchvision
 scikit-learn
 torchmetrics
-optuna
 optuna-dashboard
-plotly
-nbformat

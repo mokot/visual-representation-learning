@@ -23,3 +23,6 @@ results/splat_*
 
 # Logs
 logs/events.out.tfevents.*
+
+# Models
+models/*.ckpt

@@ -25,4 +25,5 @@ results/splat_*
 logs/events.out.tfevents.*
 
 # Models
-models/*.ckpt
+/models/**/*.pt
+/models/**/*.ckpt

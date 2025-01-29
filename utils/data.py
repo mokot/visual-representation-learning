@@ -378,11 +378,11 @@ def transform_autoencoder_output(
             .view(1024, 4, 3)
         )
     elif join_mode == "dict":
-        # Permute values from [N, 32, 32] to [32, 32, N]
-        autoencoder_output = autoencoder_output.permute(1, 2, 0)
-
         # Denormalize the output to the original range along each channel
         for _, value in autoencoder_output.items():
+            # Permute values from [N, 32, 32] to [32, 32, N]
+            value = value.permute(1, 2, 0)
+            
             for i in range(value.size(2)):
                 value = value.clone().detach()
                 value[:, :, i] = denormalize_from_neg_one_one(

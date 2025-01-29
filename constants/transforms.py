@@ -25,3 +25,19 @@ CIFAR10_INVERSE_TRANSFORM = transforms.Compose(
         transforms.ToPILImage(),  # Convert back to PIL Image
     ]
 )
+
+# Transformation to tensor
+TENSOR_TRANSFORM = transforms.Compose(
+    [
+        transforms.ToTensor(),  
+        transforms.Lambda(lambda x: x.unsqueeze(0) if x.dim() == 3 else x),
+    ]
+)
+
+# Transformation to PIL image
+PIL_TRANSFORM = transforms.Compose(
+    [
+        transforms.Lambda(lambda x: x.squeeze(0) if x.size(0) == 1 else x),
+        transforms.ToPILImage(), 
+    ]
+)

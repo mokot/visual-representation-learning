@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from constants import CIFAR10_TRANSFORM
 from utils.image import tensor_to_image
 from typing import Any, Dict, List, Tuple
-from constants.splats import CIFAR10_KS, CIFAR10_VIEWMATS
+from constants.splats import CIFAR10_KS, CIFAR10_VIEWMATS, CIFAR10_GRID_RANGES
 from utils.normalization import normalize_to_neg_one_one, denormalize_from_neg_one_one
 
 
@@ -193,6 +193,29 @@ def transform_autoencoder_input(
     # Ks = parameter_dict["Ks"].clone().detach()  # 3x3
     # viewmats = parameter_dict["viewmats"].clone().detach()  # 4x4
 
+    # Normalize the input to the range [-1, 1]
+    means = normalize_to_neg_one_one(
+        means, CIFAR10_GRID_RANGES["means"]["min"], CIFAR10_GRID_RANGES["means"]["max"]
+    )
+    quats = normalize_to_neg_one_one(
+        quats, CIFAR10_GRID_RANGES["quats"]["min"], CIFAR10_GRID_RANGES["quats"]["max"]
+    )
+    scales = normalize_to_neg_one_one(
+        scales,
+        CIFAR10_GRID_RANGES["scales"]["min"],
+        CIFAR10_GRID_RANGES["scales"]["max"],
+    )
+    opacities = normalize_to_neg_one_one(
+        opacities,
+        CIFAR10_GRID_RANGES["opacities"]["min"],
+        CIFAR10_GRID_RANGES["opacities"]["max"],
+    )
+    colors = normalize_to_neg_one_one(
+        colors,
+        CIFAR10_GRID_RANGES["colors"]["min"],
+        CIFAR10_GRID_RANGES["colors"]["max"],
+    )
+
     if join_mode == "flatten":
         means = means.view(-1)
         quats = quats.view(-1)
@@ -202,11 +225,6 @@ def transform_autoencoder_input(
 
         # Concatenate all parameters into a single 1D tensor
         autoencoder_input = torch.cat([means, quats, scales, opacities, colors], dim=0)
-
-        # Normalize the input to the range [-1, 1]
-        autoencoder_input = normalize_to_neg_one_one(
-            autoencoder_input, autoencoder_input.min(), autoencoder_input.max()
-        )
     elif join_mode == "concat":
         means = means.view(32, 32, -1)
         quats = quats.view(32, 32, -1)
@@ -216,14 +234,6 @@ def transform_autoencoder_input(
 
         # Concatenate all parameters along the channel
         autoencoder_input = torch.cat([means, quats, scales, opacities, colors], dim=2)
-
-        # Normalize the input to the range [-1, 1] along each channel
-        for i in range(autoencoder_input.size(2)):
-            autoencoder_input[:, :, i] = normalize_to_neg_one_one(
-                autoencoder_input[:, :, i],
-                autoencoder_input[:, :, i].min(),
-                autoencoder_input[:, :, i].max(),
-            )
 
         # Permute values from [32, 32, N] to [N, 32, 32]
         autoencoder_input = autoencoder_input.permute(2, 0, 1)
@@ -240,14 +250,6 @@ def transform_autoencoder_input(
         for key, value in parameter_dict.items():
             # Convert to 32x32
             value = value.view(32, 32, -1)
-
-            # Normalize the input to the range [-1, 1] along each channel
-            for i in range(value.size(2)):
-                value[:, :, i] = normalize_to_neg_one_one(
-                    value[:, :, i],
-                    value[:, :, i].min(),
-                    value[:, :, i].max(),
-                )
 
             # Permute values from [32, 32, N] to [N, 32, 32]
             value = value.permute(2, 0, 1)
@@ -279,11 +281,6 @@ def transform_autoencoder_output(
         dict: Reconstructed parameter dictionary.
     """
     if join_mode == "flatten":
-        # Denormalize the output to the original range
-        autoencoder_output = denormalize_from_neg_one_one(
-            autoencoder_output, autoencoder_output.min(), autoencoder_output.max()
-        )
-
         # Reconstruct each parameter from the flattened tensor
         idx = 0
 
@@ -322,14 +319,6 @@ def transform_autoencoder_output(
     elif join_mode == "concat":
         # Permute values from [N, 32, 32] to [32, 32, N]
         autoencoder_output = autoencoder_output.permute(1, 2, 0)
-
-        # Denormalize the output to the original range along each channel
-        for i in range(autoencoder_output.size(2)):
-            autoencoder_output[:, :, i] = denormalize_from_neg_one_one(
-                autoencoder_output[:, :, i],
-                autoencoder_output[:, :, i].min(),
-                autoencoder_output[:, :, i].max(),
-            )
 
         # Reconstruct each parameter from the concatenated tensor
         idx = 0
@@ -378,16 +367,9 @@ def transform_autoencoder_output(
             .view(1024, 4, 3)
         )
     elif join_mode == "dict":
-        # Denormalize the output to the original range along each channel
         for _, value in autoencoder_output.items():
             # Permute values from [N, 32, 32] to [32, 32, N]
             value = value.permute(1, 2, 0)
-            
-            for i in range(value.size(2)):
-                value = value.clone().detach()
-                value[:, :, i] = denormalize_from_neg_one_one(
-                    value[:, :, i], value[:, :, i].min(), value[:, :, i].max()
-                )
 
         # Reconstruct each parameter from the concatenated tensor
         means = autoencoder_output["means"].view(1024, 3)
@@ -397,6 +379,29 @@ def transform_autoencoder_output(
         colors = autoencoder_output["colors"].view(1024, 4, 3)
     else:
         raise ValueError(f"Invalid join_mode: {join_mode}")
+
+    # Denormalize the output to the original range
+    means = denormalize_from_neg_one_one(
+        means, CIFAR10_GRID_RANGES["means"]["min"], CIFAR10_GRID_RANGES["means"]["max"]
+    )
+    quats = denormalize_from_neg_one_one(
+        quats, CIFAR10_GRID_RANGES["quats"]["min"], CIFAR10_GRID_RANGES["quats"]["max"]
+    )
+    scales = denormalize_from_neg_one_one(
+        scales,
+        CIFAR10_GRID_RANGES["scales"]["min"],
+        CIFAR10_GRID_RANGES["scales"]["max"],
+    )
+    opacities = denormalize_from_neg_one_one(
+        opacities,
+        CIFAR10_GRID_RANGES["opacities"]["min"],
+        CIFAR10_GRID_RANGES["opacities"]["max"],
+    )
+    colors = denormalize_from_neg_one_one(
+        colors,
+        CIFAR10_GRID_RANGES["colors"]["min"],
+        CIFAR10_GRID_RANGES["colors"]["max"],
+    )
 
     # Reconstruct the parameter dictionary
     parameter_dict = {

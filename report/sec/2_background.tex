@@ -1,0 +1,15 @@
+\section{Background}
+\label{sec:background}
+
+\subsection{Gaussian Splats}
+\label{bg-gs}
+Recently, scene representation and novel-view synthesis techniques making use of machine learning methods have gained attention. One of the most popular frameworks in this category are Neural Radiance Fields (NeRFs) $\cite{}{}$, able to produce high quality implicit representations of scenes. Typically, NeRFs do this by optimizing a deep neural network using a volumetric continuous representation of the scene, using thechniques such as volumetric ray marching. In spite of various improvements to increase the efficiency of this framework $\cite{}{}$, achieving high visual quality through NeRFs remains computationally expensive due to the training cost of the neural network, in addition to a high rendering cost. To address these issues, the Gaussian Splatting (GS) framework was proposed.
+
+Through Gaussian Splatting, instead of learning a continuous implicit representation of a scene, scenes are explicitly represented through a set of points using a large number of Gaussian primitives. The Gaussian ellipsoids constituting a scene have a set of learnable parameters controlling properties of the reconstruction, such as position, opacity, anisotropic covariance, and spherical harmonic (SH) coefficients. In addition to providing a high reconstruction quality, Gaussian Splatting provides much faster rendering, being able to produce novel-views in real time. GS achieves this by using rasterization-based rendering, which, in contrast to the rendering used by NeRFs, does not require sampling points.
+
+Although GS was originally formulated for the reconstruction of 3D-scenes, and is often studied in that domain, this work considers 2D GS. Considering 2D GS alleviates some of the challenges involved in the process of auto-encoding Gaussian Splats.
+
+\subsection{Auto-Encoders}
+
+
+\label{bg-ae}

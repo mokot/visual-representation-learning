@@ -1,0 +1,53 @@
+\section{Methodology}
+\label{sec:methodology}
+
+\subsection{Dataset Preparation}
+Our approach utilizes the CIFAR-10 dataset, a widely used benchmark for image processing tasks. The dataset consists of 60,000 color images of size $32 \times 32$ pixels, categorized into 10 classes. Each image is represented using a set of Gaussian splats, where each Gaussian encapsulates local image features. 
+
+To construct the Gaussian representation, we preprocess the dataset by mapping each image to a set of 23 Gaussians, each defined by a 1024-dimensional feature vector. These feature vectors capture spatial, color, and intensity distributions across the image. The dataset is partitioned into training, validation, and test sets using an 80-10-10 split.
+
+\subsection{Gaussian Splatting and Representation}
+Gaussian splatting is employed to encode images in a continuous and differentiable manner. Each image is decomposed into multiple Gaussians, where each Gaussian is parameterized by its position, scale, rotation, and opacity. This representation enables efficient image compression and reconstruction.
+
+Each Gaussian $G_i$ in an image is characterized by:
+\begin{itemize}
+    \item \textbf{Mean Position} $(x_i, y_i)$: Determines the spatial location of the Gaussian.
+    \item \textbf{Covariance Matrix} $\Sigma_i$: Controls the spread and orientation.
+    \item \textbf{Color Components} $(r_i, g_i, b_i)$: Defines the color distribution.
+    \item \textbf{Opacity} $\alpha_i$: Regulates transparency in blending operations.
+\end{itemize}
+
+\subsection{Configurations and Experimental Setups}
+We implemented various configurations to analyze the impact of different hyperparameters on Gaussian-based autoencoding. The key configurations include:
+
+\paragraph{Baseline Configuration} 
+This setup uses a fixed number of 23 Gaussians per image, each represented using 1024-dimensional feature vectors. A simple MLP-based autoencoder is trained to reconstruct the Gaussian representation from a compressed latent space.
+
+\paragraph{Variable Gaussian Count}
+To study the effect of the number of Gaussians on reconstruction accuracy, we experimented with configurations ranging from 10 to 50 Gaussians per image. The autoencoder is adapted to dynamically encode and decode varying numbers of Gaussians.
+
+\paragraph{Gaussian Parameter Augmentation}
+We extended the feature vector to include additional properties such as:
+\begin{itemize}
+    \item Higher-order moments for improved shape modeling.
+    \item Adaptive opacity modulation to enhance reconstruction fidelity.
+    \item Learned covariance scaling to optimize Gaussian spread.
+\end{itemize}
+
+\paragraph{Different Autoencoder Architectures} 
+We evaluated multiple autoencoder architectures, including:
+\begin{itemize}
+    \item Standard MLP-based encoders and decoders.
+    \item Transformer-based encoders for capturing long-range dependencies.
+    \item Convolutional layers to improve spatial consistency in Gaussian embeddings.
+\end{itemize}
+
+\paragraph{Loss Function Variants} 
+We explored different loss functions to optimize reconstruction quality, including:
+\begin{itemize}
+    \item Mean Squared Error (MSE) on Gaussian parameters.
+    \item Structural Similarity Index (SSIM) for perceptual quality.
+    \item KL-divergence regularization to enforce latent space structure.
+\end{itemize}
+
+The combination of these configurations provides insights into the optimal representation and reconstruction strategies for Gaussian-splatted images.

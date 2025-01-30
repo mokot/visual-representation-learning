@@ -28,3 +28,11 @@ CIFAR10_VIEWMATS = torch.tensor(
     ],
     dtype=torch.float32,  # Ensure the tensor is float32
 )
+
+CIFAR10_GRID_RANGES = {
+    "means": {"min": -1.0, "max": 1.0},
+    "quats": {"min": -3.7537035942077637, "max": 4.574342727661133},
+    "scales": {"min": -14.256706237792969, "max": 6.657063961029053},
+    "opacities": {"min": -5.512201309204102, "max": 7.002721309661865},
+    "colors": {"min": -15.537788391113281, "max": 17.288856506347656},
+}

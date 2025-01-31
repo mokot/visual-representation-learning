@@ -195,25 +195,25 @@ def transform_autoencoder_input(
 
     # Normalize the input to the range [-1, 1]
     means = normalize_to_neg_one_one(
-        means, CIFAR10_GRID_RANGES["means"]["min"], CIFAR10_GRID_RANGES["means"]["max"]
+        means, CIFAR10_GRID_RANGES["means"]["mean"], CIFAR10_GRID_RANGES["means"]["std"]
     )
     quats = normalize_to_neg_one_one(
-        quats, CIFAR10_GRID_RANGES["quats"]["min"], CIFAR10_GRID_RANGES["quats"]["max"]
+        quats, CIFAR10_GRID_RANGES["quats"]["mean"], CIFAR10_GRID_RANGES["quats"]["std"]
     )
     scales = normalize_to_neg_one_one(
         scales,
-        CIFAR10_GRID_RANGES["scales"]["min"],
-        CIFAR10_GRID_RANGES["scales"]["max"],
+        CIFAR10_GRID_RANGES["scales"]["mean"],
+        CIFAR10_GRID_RANGES["scales"]["std"],
     )
     opacities = normalize_to_neg_one_one(
         opacities,
-        CIFAR10_GRID_RANGES["opacities"]["min"],
-        CIFAR10_GRID_RANGES["opacities"]["max"],
+        CIFAR10_GRID_RANGES["opacities"]["mean"],
+        CIFAR10_GRID_RANGES["opacities"]["std"],
     )
     colors = normalize_to_neg_one_one(
         colors,
-        CIFAR10_GRID_RANGES["colors"]["min"],
-        CIFAR10_GRID_RANGES["colors"]["max"],
+        CIFAR10_GRID_RANGES["colors"]["mean"],
+        CIFAR10_GRID_RANGES["colors"]["std"],
     )
 
     if join_mode == "flatten":
@@ -382,25 +382,25 @@ def transform_autoencoder_output(
 
     # Denormalize the output to the original range
     means = denormalize_from_neg_one_one(
-        means, CIFAR10_GRID_RANGES["means"]["min"], CIFAR10_GRID_RANGES["means"]["max"]
+        means, CIFAR10_GRID_RANGES["means"]["mean"], CIFAR10_GRID_RANGES["means"]["std"]
     )
     quats = denormalize_from_neg_one_one(
-        quats, CIFAR10_GRID_RANGES["quats"]["min"], CIFAR10_GRID_RANGES["quats"]["max"]
+        quats, CIFAR10_GRID_RANGES["quats"]["mean"], CIFAR10_GRID_RANGES["quats"]["std"]
     )
     scales = denormalize_from_neg_one_one(
         scales,
-        CIFAR10_GRID_RANGES["scales"]["min"],
-        CIFAR10_GRID_RANGES["scales"]["max"],
+        CIFAR10_GRID_RANGES["scales"]["mean"],
+        CIFAR10_GRID_RANGES["scales"]["std"],
     )
     opacities = denormalize_from_neg_one_one(
         opacities,
-        CIFAR10_GRID_RANGES["opacities"]["min"],
-        CIFAR10_GRID_RANGES["opacities"]["max"],
+        CIFAR10_GRID_RANGES["opacities"]["mean"],
+        CIFAR10_GRID_RANGES["opacities"]["std"],
     )
     colors = denormalize_from_neg_one_one(
         colors,
-        CIFAR10_GRID_RANGES["colors"]["min"],
-        CIFAR10_GRID_RANGES["colors"]["max"],
+        CIFAR10_GRID_RANGES["colors"]["mean"],
+        CIFAR10_GRID_RANGES["colors"]["std"],
     )
 
     # Reconstruct the parameter dictionary

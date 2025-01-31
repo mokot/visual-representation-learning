@@ -35,7 +35,7 @@ This repository explores **Autoencoding Gaussian Splats** for 2D image represent
 ├── example.ipynb         # Provided example from mentors
 ├── LICENSE               # License file
 ├── README.md             # Project documentation
-├── requirements.txt      # Python dependencies
+└── requirements.txt      # Python dependencies
 ```
 
 ## Getting Started

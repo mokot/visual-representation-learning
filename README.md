@@ -30,7 +30,7 @@ This repository explores **Autoencoding Gaussian Splats** for 2D image represent
 ├── slurm/                # SLURM batch scripts for job scheduling
 ├── style/                # Custom matplotlib styles
 ├── submodules/           # External repositories (e.g., ResNet-18 autoencoder)
-├── tests/                # Jupyter notebooks for testing different setups
+├── tests/                # Jupyter notebooks for experimenting with different setups
 ├── utils/                # Utility functions for data processing and visualization
 ├── example.ipynb         # Provided example from mentors
 ├── LICENSE               # License file
@@ -53,7 +53,7 @@ This repository explores **Autoencoding Gaussian Splats** for 2D image represent
    pip install -r requirements.txt
    ```
 
-3. **Run experiments:** Refer to `example.ipynb` for a usage example.
+3. **Run experiments:** Refer to `tests/` folder for Jupyter notebooks with different experimental setups.
 
 ## References
 

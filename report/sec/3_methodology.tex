@@ -1,53 +1,84 @@
 \section{Methodology}
 \label{sec:methodology}
 
-\subsection{Dataset Preparation}
-Our approach utilizes the CIFAR-10 dataset, a widely used benchmark for image processing tasks. The dataset consists of 60,000 color images of size $32 \times 32$ pixels, categorized into 10 classes. Each image is represented using a set of Gaussian splats, where each Gaussian encapsulates local image features. 
+\subsection{Dataset}
+In our study, we used the CIFAR-10 dataset \cite{krizhevsky2009learningml}, a widely recognized benchmark for machine learning and computer vision algorithms. It consists of 60,000 color images of size $32 \times 32$ pixels, categorized into 10 classes, with 6,000 images per class. The dataset is originally divided into 50,000 training images and 10,000 test images.
 
-To construct the Gaussian representation, we preprocess the dataset by mapping each image to a set of 23 Gaussians, each defined by a 1024-dimensional feature vector. These feature vectors capture spatial, color, and intensity distributions across the image. The dataset is partitioned into training, validation, and test sets using an 80-10-10 split.
+CIFAR-10 features a diverse set of real-world images, making it well-suited for evaluating image classification models. Due to its small image size, it enables efficient training and testing, facilitating rapid prototyping of deep learning models. Additionally, the dataset is preprocessed and standardized, eliminating the need for extensive preprocessing. The 10 classes included are \textit{airplane}, \textit{automobile}, \textit{bird}, \textit{cat}, \textit{deer}, \textit{dog}, \textit{frog}, \textit{horse}, \textit{ship}, and \textit{truck}.
 
-\subsection{Gaussian Splatting and Representation}
-Gaussian splatting is employed to encode images in a continuous and differentiable manner. Each image is decomposed into multiple Gaussians, where each Gaussian is parameterized by its position, scale, rotation, and opacity. This representation enables efficient image compression and reconstruction.
+As mentioned earlier, our goal was to construct a new dataset of trained Gaussian splats, where each Gaussian encapsulates local image features based on the CIFAR-10 dataset. We generated this dataset by mapping each image to a set of five splat parameters: position (mean), scale, rotation (quaternion), opacity, and color. Each parameter is represented as a $1024 \times N$ matrix, capturing the spatial, color, and intensity distributions across the image. The dataset is implemented as a \texttt{PyTorch} dataset \cite{paszke2019pytorchai} and is partitioned into training, validation, and test sets using a $4 : 1 : 1$ split.
 
-Each Gaussian $G_i$ in an image is characterized by:
+\subsection{Gaussian splatting}
+To construct a dataset suitable for training an autoencoder for Gaussian splats, it was essential to first establish an effective method for generating high-quality Gaussian representations of images. Each Gaussian $G_i$ in an image is characterized by the following parameters:
+
 \begin{itemize}
-    \item \textbf{Mean Position} $(x_i, y_i)$: Determines the spatial location of the Gaussian.
-    \item \textbf{Covariance Matrix} $\Sigma_i$: Controls the spread and orientation.
-    \item \textbf{Color Components} $(r_i, g_i, b_i)$: Defines the color distribution.
-    \item \textbf{Opacity} $\alpha_i$: Regulates transparency in blending operations.
+    \item mean position $(x_i, y_i)$: specifies the spatial location of the Gaussian within the image.
+    \item covariance matrix $\Sigma_i$: defines the spread and orientation of the Gaussian, influencing its shape and blending characteristics.
+    \item color components $(r_i, g_i, b_i)$: represents the color distribution of the Gaussian.
+    \item opacity $\alpha_i$: controls transparency, determining how Gaussians blend within the composition.
 \end{itemize}
 
-\subsection{Configurations and Experimental Setups}
-We implemented various configurations to analyze the impact of different hyperparameters on Gaussian-based autoencoding. The key configurations include:
+\subsubsection{Gaussian representation and optimization}
+We employed the \texttt{gsplat} library \cite{ye2024gsplatao} to convert images into Gaussian splats. The primary objective was to optimize the placement and parameters of the Gaussians to achieve the most accurate rasterization possible. Various configurations and hyperparameters were explored to assess their impact on the fidelity of reconstructed images. The implementation was modular, allowing for flexible adjustments and systematic evaluation of different settings. The most effective hyperparameter configurations and their corresponding results are analyzed in Section \ref{sec:results}.
 
-\paragraph{Baseline Configuration} 
-This setup uses a fixed number of 23 Gaussians per image, each represented using 1024-dimensional feature vectors. A simple MLP-based autoencoder is trained to reconstruct the Gaussian representation from a compressed latent space.
+A key aspect of our methodology was the optimization process, where we implemented and tested several parameter learning strategies, including:
 
-\paragraph{Variable Gaussian Count}
-To study the effect of the number of Gaussians on reconstruction accuracy, we experimented with configurations ranging from 10 to 50 Gaussians per image. The autoencoder is adapted to dynamically encode and decode varying numbers of Gaussians.
-
-\paragraph{Gaussian Parameter Augmentation}
-We extended the feature vector to include additional properties such as:
 \begin{itemize}
-    \item Higher-order moments for improved shape modeling.
-    \item Adaptive opacity modulation to enhance reconstruction fidelity.
-    \item Learned covariance scaling to optimize Gaussian spread.
+    \item training iterations and learning rate: adjusting the number of optimization steps and the step size for parameter updates,
+    \item loss functions: evaluating different loss functions (L1, L2, SSIM) to determine their impact on image reconstruction quality,
+    \item regularization strategies: applying constraints on scales and opacities to prevent degenerate solutions,
+    \item optimization techniques: experimenting with group optimization and adaptive gradient strategies such as selective Adam and sparse gradient methods,
+    \item scheduling and optimization strategies: implementing various learning rate schedulers and optimization algorithms to improve convergence.
 \end{itemize}
 
-\paragraph{Different Autoencoder Architectures} 
-We evaluated multiple autoencoder architectures, including:
+\subsubsection{Extended functionality and dataset variants}
+To enhance the flexibility of Gaussian splatting, we incorporated additional features, including:
+
 \begin{itemize}
-    \item Standard MLP-based encoders and decoders.
-    \item Transformer-based encoders for capturing long-range dependencies.
-    \item Convolutional layers to improve spatial consistency in Gaussian embeddings.
+    \item selective learning of splat parameters: allowing control over which Gaussian parameters are optimized during training,
+    \item support for 2D and 3D rasterization: implementing both standard 2D rasterization and extending compatibility with custom 3D rasterization techniques \cite{kerbl20233dgs},
+    \item bilateral guided radiance support: integrating methods for improved radiance-based rendering \cite{wang2024bilateralgr}.
 \end{itemize}
 
-\paragraph{Loss Function Variants} 
-We explored different loss functions to optimize reconstruction quality, including:
+Furthermore, we explored different initialization strategies to generate diverse dataset variants, implementing three approaches:
+
 \begin{itemize}
-    \item Mean Squared Error (MSE) on Gaussian parameters.
-    \item Structural Similarity Index (SSIM) for perceptual quality.
-    \item KL-divergence regularization to enforce latent space structure.
+    \item random initialization: assigning Gaussian parameters randomly within predefined bounds,
+    \item grid-based initialization: placing Gaussians on a structured grid for uniform coverage,
+    \item KNN-based initialization: distributing Gaussians based on a nearest-neighbor approach to better approximate image structures.
 \end{itemize}
 
-The combination of these configurations provides insights into the optimal representation and reconstruction strategies for Gaussian-splatted images.
+These variations allowed us to construct multiple datasets tailored to different experimental conditions, enabling a comprehensive evaluation of autoencoding techniques for Gaussian splats.
+
+\paragraph{Autoencoder architectures}
+After generating Gaussian splats, we implemented three distinct autoencoder architectures: a deep autoencoder, a convolutional autoencoder, and a ResNet-based autoencoder. Each model was designed as an implementation of our abstract autoencoder module in \texttt{PyTorch} \cite{paszke2019pytorchai}, ensuring architectural flexibility and a standardized training pipeline.
+
+The deep autoencoder processes an input vector of dimension $23552$, encoding it into an $N$-dimensional latent space through four fully connected feed-forward layers. The decoder is a mirrored version of the encoder, with a final $\tanh$ activation to constrain outputs within the original value range.
+
+The convolutional autoencoder takes as input a $32 \times 32 \times N$ matrix representation, where $N$ denotes the number of channels. The encoder consists of three sequential convolutional and max-pooling layers, reducing the representation to 128 channels. The decoder, built using three transposed convolutional layers, reconstructs the original input with a $\tanh$ activation.
+
+The ResNet-based autoencoder follows the architecture of ResNet-18 \cite{he2015deeprl}, with modifications inspired by the convolutional autoencoder. The residual connections enhance gradient flow, improving learning stability and convergence.
+
+\subsubsection{Experimental setup and training}
+To evaluate the models, we conducted multiple experiments tailored to different representations of Gaussian splats:
+
+\begin{itemize}
+\item vector-based encoding: the deep autoencoder was tested on a flattened representation, combining all Gaussian parameters into a single vector to assess the importance of spatial information,
+\item full-image encoding: the convolutional and ResNet-based models were trained on a transformed image representation where all 23 parameter channels were combined and learned simultaneously,
+\item single-channel encoding: an alternative approach involved training models on individual parameter channels, treating them as separate grayscale images to examine per-parameter learning efficiency,
+\item independent parameter models: a final experiment trained a distinct autoencoder for each splatting parameter, allowing for independent optimization but at the cost of increased complexity.
+\end{itemize}
+
+\subsubsection{Hyperparameter optimization}
+A crucial part of our methodology was optimizing hyperparameters to enhance performance. The training pipeline systematically explored the following factors:
+
+\begin{itemize}
+\item latent dimension: determining the optimal size of the compressed representation for effective reconstruction.
+\item learning rate and weight decay: evaluating their impact on stability and convergence using the Adam optimizer.
+\item number of epochs and gradient clipping: preventing instability in training dynamics,
+\item initialization strategies: comparing standard and Xavier weight initialization techniques,
+\item regularization techniques: assessing dropout and batch normalization effects on generalization,
+\item learning rate scheduling: experimenting with different schedulers to adapt learning dynamics.
+\end{itemize}
+
+The final models, trained on the complete dataset, are analyzed in Section \ref{sec:results}.

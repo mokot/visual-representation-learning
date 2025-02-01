@@ -10,6 +10,9 @@ Through Gaussian Splatting, instead of learning a continuous implicit representa
 Although GS was originally formulated for the reconstruction of 3D-scenes, and is often studied in that domain, this work considers 2D GS. Considering 2D GS alleviates some of the challenges involved in the process of auto-encoding Gaussian Splats.
 
 \subsection{Auto-Encoders}
-
-
 \label{bg-ae}
+Auto-Encoders (AEs) $\cite{}$ are one of the most widely used models in the field of unsupervised learning. The first component of a conventional AE is the encoder, which maps the input data into a lower-dimensional \textit{latent} space. The second component of this architecture is the decoder, which reconstructs the original input from the reduced latent space. The primary function of AEs is to learn a compact and efficient representation of the input data in the latent space $\cite{}$. This compact representation has proven useful for feature extraction $\cite{}$ and dimensionality reduction $\cite{}$ in particular.
+
+Over time, various modifications have enhanced the capabilities of autoencoders. Some notable variants include Denoising Autoencoders (DAE) $\cite{}$, which introduce noise into input data to improve robustness; Sparse Autoencoders (SAE) $\cite{}$, which enforce sparsity constraints on the hidden layer for better feature selection; and Variational Autoencoders (VAE) $\cite{}$, which integrate probabilistic modeling for generative applications and Convolutional Autoencoders (CAE) $\cite{}$, which leverage convolutional layers for an improved structural understanding of image data.
+
+In this work, different variations of AEs are applied to Gaussian Splats, investigating the potential of generating meaningful, accurate and compact representations of Splat data.

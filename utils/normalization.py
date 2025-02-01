@@ -21,6 +21,10 @@ def normalize_to_neg_one_one(
     Returns:
     torch.Tensor: The normalized tensor in the range [-1, 1].
     """
+    # Move to the correct device
+    mean = mean.to(x.device)
+    std = std.to(x.device)
+
     std[std == 0] = 1  # Avoid division by zero
     x = (x - mean) / std  # Standardization
 
@@ -48,6 +52,10 @@ def denormalize_from_neg_one_one(
     Returns:
     torch.Tensor: The denormalized tensor in the original range.
     """
+    # Move to the correct device
+    mean = mean.to(x.device)
+    std = std.to(x.device)
+
     # Map from [-1, 1] to [min_val, max_val]
     x = (x + 1) / 2 * (max_val - min_val) + min_val
     return x * std + mean  # Reverse standardization

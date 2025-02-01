@@ -198,36 +198,36 @@ def transform_autoencoder_input(
         means,
         CIFAR10_GRID_RANGES["means"]["mean"],
         CIFAR10_GRID_RANGES["means"]["std"],
-        CIFAR10_GRID_RANGES["means"]["min"],
-        CIFAR10_GRID_RANGES["means"]["max"],
+        CIFAR10_GRID_RANGES["means"]["min_std"],
+        CIFAR10_GRID_RANGES["means"]["max_std"],
     )
     quats = normalize_to_neg_one_one(
         quats,
         CIFAR10_GRID_RANGES["quats"]["mean"],
         CIFAR10_GRID_RANGES["quats"]["std"],
-        CIFAR10_GRID_RANGES["quats"]["min"],
-        CIFAR10_GRID_RANGES["quats"]["max"],
+        CIFAR10_GRID_RANGES["quats"]["min_std"],
+        CIFAR10_GRID_RANGES["quats"]["max_std"],
     )
     scales = normalize_to_neg_one_one(
         scales,
         CIFAR10_GRID_RANGES["scales"]["mean"],
         CIFAR10_GRID_RANGES["scales"]["std"],
-        CIFAR10_GRID_RANGES["scales"]["min"],
-        CIFAR10_GRID_RANGES["scales"]["max"],
+        CIFAR10_GRID_RANGES["scales"]["min_std"],
+        CIFAR10_GRID_RANGES["scales"]["max_std"],
     )
     opacities = normalize_to_neg_one_one(
         opacities,
         CIFAR10_GRID_RANGES["opacities"]["mean"],
         CIFAR10_GRID_RANGES["opacities"]["std"],
-        CIFAR10_GRID_RANGES["opacities"]["min"],
-        CIFAR10_GRID_RANGES["opacities"]["max"],
+        CIFAR10_GRID_RANGES["opacities"]["min_std"],
+        CIFAR10_GRID_RANGES["opacities"]["max_std"],
     )
     colors = normalize_to_neg_one_one(
         colors,
         CIFAR10_GRID_RANGES["colors"]["mean"],
         CIFAR10_GRID_RANGES["colors"]["std"],
-        CIFAR10_GRID_RANGES["colors"]["min"],
-        CIFAR10_GRID_RANGES["colors"]["max"],
+        CIFAR10_GRID_RANGES["colors"]["min_std"],
+        CIFAR10_GRID_RANGES["colors"]["max_std"],
     )
 
     if join_mode == "flatten":
@@ -399,36 +399,36 @@ def transform_autoencoder_output(
         means,
         CIFAR10_GRID_RANGES["means"]["mean"],
         CIFAR10_GRID_RANGES["means"]["std"],
-        CIFAR10_GRID_RANGES["means"]["min"],
-        CIFAR10_GRID_RANGES["means"]["max"],
+        CIFAR10_GRID_RANGES["means"]["min_std"],
+        CIFAR10_GRID_RANGES["means"]["max_std"],
     )
     quats = denormalize_from_neg_one_one(
         quats,
         CIFAR10_GRID_RANGES["quats"]["mean"],
         CIFAR10_GRID_RANGES["quats"]["std"],
-        CIFAR10_GRID_RANGES["quats"]["min"],
-        CIFAR10_GRID_RANGES["quats"]["max"],
+        CIFAR10_GRID_RANGES["quats"]["min_std"],
+        CIFAR10_GRID_RANGES["quats"]["max_std"],
     )
     scales = denormalize_from_neg_one_one(
         scales,
         CIFAR10_GRID_RANGES["scales"]["mean"],
         CIFAR10_GRID_RANGES["scales"]["std"],
-        CIFAR10_GRID_RANGES["scales"]["min"],
-        CIFAR10_GRID_RANGES["scales"]["max"],
+        CIFAR10_GRID_RANGES["scales"]["min_std"],
+        CIFAR10_GRID_RANGES["scales"]["max_std"],
     )
     opacities = denormalize_from_neg_one_one(
         opacities,
         CIFAR10_GRID_RANGES["opacities"]["mean"],
         CIFAR10_GRID_RANGES["opacities"]["std"],
-        CIFAR10_GRID_RANGES["opacities"]["min"],
-        CIFAR10_GRID_RANGES["opacities"]["max"],
+        CIFAR10_GRID_RANGES["opacities"]["min_std"],
+        CIFAR10_GRID_RANGES["opacities"]["max_std"],
     )
     colors = denormalize_from_neg_one_one(
         colors,
         CIFAR10_GRID_RANGES["colors"]["mean"],
         CIFAR10_GRID_RANGES["colors"]["std"],
-        CIFAR10_GRID_RANGES["colors"]["min"],
-        CIFAR10_GRID_RANGES["colors"]["max"],
+        CIFAR10_GRID_RANGES["colors"]["min_std"],
+        CIFAR10_GRID_RANGES["colors"]["max_std"],
     )
 
     # Reconstruct the parameter dictionary

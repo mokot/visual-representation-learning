@@ -2,36 +2,27 @@
 \label{sec:methodology}
 
 \subsection{Dataset}
-In our study, we used the CIFAR-10 dataset \cite{krizhevsky2009learningml}, a widely recognized benchmark for machine learning and computer vision algorithms. It consists of 60,000 color images of size $32 \times 32$ pixels, categorized into 10 classes, with 6,000 images per class. The dataset is originally divided into 50,000 training images and 10,000 test images.
-
-CIFAR-10 features a diverse set of real-world images, making it well-suited for evaluating image classification models. Due to its small image size, it enables efficient training and testing, facilitating rapid prototyping of deep learning models. Additionally, the dataset is preprocessed and standardized, eliminating the need for extensive preprocessing. The 10 classes included are \textit{airplane}, \textit{automobile}, \textit{bird}, \textit{cat}, \textit{deer}, \textit{dog}, \textit{frog}, \textit{horse}, \textit{ship}, and \textit{truck}.
+In our study, we used the CIFAR-10 dataset \cite{krizhevsky2009learningml}, a widely recognized benchmark for machine learning and computer vision algorithms. It consists of 60,000 color images of size $32 \times 32$ pixels, categorized into 10 evenly distributed classes. The dataset is originally divided into 50,000 training images and 10,000 test images.
 
 As mentioned earlier, our goal was to construct a new dataset of trained Gaussian splats, where each Gaussian encapsulates local image features based on the CIFAR-10 dataset. We generated this dataset by mapping each image to a set of five splat parameters: position (mean), scale, rotation (quaternion), opacity, and color. Each parameter is represented as a $1024 \times N$ matrix, capturing the spatial, color, and intensity distributions across the image. The dataset is implemented as a \texttt{PyTorch} dataset \cite{paszke2019pytorchai} and is partitioned into training, validation, and test sets using a $4 : 1 : 1$ split.
 
 \subsection{Gaussian splatting}
-To construct a dataset suitable for training an autoencoder for Gaussian splats, it was essential to first establish an effective method for generating high-quality Gaussian representations of images. Each Gaussian $G_i$ in an image is characterized by the following parameters:
+To construct a dataset suitable for training an autoencoder for Gaussian Splats, it was essential to first establish an effective method for generating high-quality Gaussian representations of images.
 
-\begin{itemize}
-    \item mean position $(x_i, y_i)$: specifies the spatial location of the Gaussian within the image.
-    \item covariance matrix $\Sigma_i$: defines the spread and orientation of the Gaussian, influencing its shape and blending characteristics.
-    \item color components $(r_i, g_i, b_i)$: represents the color distribution of the Gaussian.
-    \item opacity $\alpha_i$: controls transparency, determining how Gaussians blend within the composition.
-\end{itemize}
-
-\subsubsection{Gaussian representation and optimization}
-We employed the \texttt{gsplat} library \cite{ye2024gsplatao} to convert images into Gaussian splats. The primary objective was to optimize the placement and parameters of the Gaussians to achieve the most accurate rasterization possible. Various configurations and hyperparameters were explored to assess their impact on the fidelity of reconstructed images. The implementation was modular, allowing for flexible adjustments and systematic evaluation of different settings. The most effective hyperparameter configurations and their corresponding results are analyzed in Section \ref{sec:results}.
+\paragraph{Gaussian representation and optimization.}
+We employed the \texttt{gsplat} library \cite{ye2024gsplatao} to convert images into Gaussian splats. The primary objective was to optimize the placement and parameters of the Gaussians to achieve the most accurate rasterization possible. Various configurations and hyperparameters were explored to assess their impact on the accuracy of the reconstructed images. The implementation was modular, allowing for flexible adjustments and systematic evaluation of different settings. 
 
 A key aspect of our methodology was the optimization process, where we implemented and tested several parameter learning strategies, including:
 
 \begin{itemize}
     \item training iterations and learning rate: adjusting the number of optimization steps and the step size for parameter updates,
-    \item loss functions: evaluating different loss functions (L1, L2, SSIM) to determine their impact on image reconstruction quality,
+    \item loss functions: evaluating different combinations of loss functions (L1, L2, SSIM) to determine their impact on image reconstruction quality,
     \item regularization strategies: applying constraints on scales and opacities to prevent degenerate solutions,
     \item optimization techniques: experimenting with group optimization and adaptive gradient strategies such as selective Adam and sparse gradient methods,
     \item scheduling and optimization strategies: implementing various learning rate schedulers and optimization algorithms to improve convergence.
 \end{itemize}
 
-\subsubsection{Extended functionality and dataset variants}
+\paragraph{Extended functionality and dataset variants.}
 To enhance the flexibility of Gaussian splatting, we incorporated additional features, including:
 
 \begin{itemize}
@@ -50,16 +41,16 @@ Furthermore, we explored different initialization strategies to generate diverse
 
 These variations allowed us to construct multiple datasets tailored to different experimental conditions, enabling a comprehensive evaluation of autoencoding techniques for Gaussian splats.
 
-\paragraph{Autoencoder architectures}
+\paragraph{Autoencoder architectures.}
 After generating Gaussian splats, we implemented three distinct autoencoder architectures: a deep autoencoder, a convolutional autoencoder, and a ResNet-based autoencoder. Each model was designed as an implementation of our abstract autoencoder module in \texttt{PyTorch} \cite{paszke2019pytorchai}, ensuring architectural flexibility and a standardized training pipeline.
 
 The deep autoencoder processes an input vector of dimension $23552$, encoding it into an $N$-dimensional latent space through four fully connected feed-forward layers. The decoder is a mirrored version of the encoder, with a final $\tanh$ activation to constrain outputs within the original value range.
 
-The convolutional autoencoder takes as input a $32 \times 32 \times N$ matrix representation, where $N$ denotes the number of channels. The encoder consists of three sequential convolutional and max-pooling layers, reducing the representation to 128 channels. The decoder, built using three transposed convolutional layers, reconstructs the original input with a $\tanh$ activation.
+The convolutional autoencoder takes as input a $32 \times 32 \times N$ matrix representation, where $N$ denotes the number of channels. The encoder consists of three sequential convolutional and max-pooling layers. The decoder, built using three transposed convolutional layers, reconstructs the original input with a $\tanh$ activation.
 
 The ResNet-based autoencoder follows the architecture of ResNet-18 \cite{he2015deeprl}, with modifications inspired by the convolutional autoencoder. The residual connections enhance gradient flow, improving learning stability and convergence.
 
-\subsubsection{Experimental setup and training}
+\paragraph{Experimental setup and training.}
 To evaluate the models, we conducted multiple experiments tailored to different representations of Gaussian splats:
 
 \begin{itemize}
@@ -69,7 +60,7 @@ To evaluate the models, we conducted multiple experiments tailored to different 
 \item independent parameter models: a final experiment trained a distinct autoencoder for each splatting parameter, allowing for independent optimization but at the cost of increased complexity.
 \end{itemize}
 
-\subsubsection{Hyperparameter optimization}
+\paragraph{Hyperparameter optimization.}
 A crucial part of our methodology was optimizing hyperparameters to enhance performance. The training pipeline systematically explored the following factors:
 
 \begin{itemize}
@@ -80,5 +71,3 @@ A crucial part of our methodology was optimizing hyperparameters to enhance perf
 \item regularization techniques: assessing dropout and batch normalization effects on generalization,
 \item learning rate scheduling: experimenting with different schedulers to adapt learning dynamics.
 \end{itemize}
-
-The final models, trained on the complete dataset, are analyzed in Section \ref{sec:results}.

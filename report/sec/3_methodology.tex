@@ -2,15 +2,15 @@
 \label{sec:methodology}
 
 \subsection{Dataset}
-In our study, we used the CIFAR-10 dataset \cite{krizhevsky2009learningml}, a widely recognized benchmark for machine learning and computer vision algorithms. It consists of 60,000 color images of size $32 \times 32$ pixels, categorized into 10 evenly distributed classes. The dataset is originally divided into 50,000 training images and 10,000 test images.
+In our study, we used the CIFAR-10 dataset \cite{krizhevsky2009learningml}, a widely recognized benchmark for machine learning and computer vision algorithms. It consists of $60,000$ color images of size $32 \times 32$ pixels, categorized into 10 evenly distributed classes. The dataset is originally divided into $50,000$ training images and $10,000$ test images.
 
-As mentioned earlier, our goal was to construct a new dataset of trained Gaussian splats, where each Gaussian encapsulates local image features based on the CIFAR-10 dataset. We generated this dataset by mapping each image to a set of five splat parameters: position (mean), scale, rotation (quaternion), opacity, and color. Each parameter is represented as a $1024 \times N$ matrix, capturing the spatial, color, and intensity distributions across the image. The dataset is implemented as a \texttt{PyTorch} dataset \cite{paszke2019pytorchai} and is partitioned into training, validation, and test sets using a $4 : 1 : 1$ split.
+As mentioned earlier, our goal was to construct a dataset of trained Gaussian Splats, where each Gaussian encapsulates local image features based on the CIFAR-10 dataset. We generated this dataset by mapping each image to a set of five Splat parameters: position (mean), scale, rotation (quaternion), opacity, and color. Each parameter is represented as a $1024 \times N$ matrix, capturing the spatial, color, and intensity distributions across the image. The dataset is implemented as a \texttt{PyTorch} dataset \cite{paszke2019pytorchai}, partitioned into training, validation, and test sets using a $4 : 1 : 1$ split.
 
-\subsection{Gaussian splatting}
-To construct a dataset suitable for training an autoencoder for Gaussian Splats, it was essential to first establish an effective method for generating high-quality Gaussian representations of images.
+\subsection{Gaussian Splatting}
+To construct a dataset suitable for training an AE for Gaussian Splats, it was essential to first establish an effective method for generating high-quality Gaussian representations of images.
 
 \paragraph{Gaussian representation and optimization.}
-We employed the \texttt{gsplat} library \cite{ye2024gsplatao} to convert images into Gaussian splats. The primary objective was to optimize the placement and parameters of the Gaussians to achieve the most accurate rasterization possible. Various configurations and hyperparameters were explored to assess their impact on the accuracy of the reconstructed images. The implementation was modular, allowing for flexible adjustments and systematic evaluation of different settings. 
+We employed the \texttt{gSplat} library \cite{ye2024gSplatao} to convert images into Gaussian Splats. The primary objective was to optimize the placement and parameters of the Gaussians to achieve the most accurate rasterization possible. Various configurations and hyperparameters were explored to assess their impact on the accuracy of the reconstructed images. The implementation was modular, allowing for flexible adjustments and systematic evaluation of different settings. 
 
 A key aspect of our methodology was the optimization process, where we implemented and tested several parameter learning strategies, including:
 
@@ -23,10 +23,10 @@ A key aspect of our methodology was the optimization process, where we implement
 \end{itemize}
 
 \paragraph{Extended functionality and dataset variants.}
-To enhance the flexibility of Gaussian splatting, we incorporated additional features, including:
+To enhance the flexibility of Gaussian Splatting, we incorporated additional features, including:
 
 \begin{itemize}
-    \item selective learning of splat parameters: allowing control over which Gaussian parameters are optimized during training,
+    \item selective learning of Splat parameters: allowing control over which Gaussian parameters are optimized during training,
     \item support for 2D and 3D rasterization: implementing both standard 2D rasterization and extending compatibility with custom 3D rasterization techniques \cite{kerbl20233dgs},
     \item bilateral guided radiance support: integrating methods for improved radiance-based rendering \cite{wang2024bilateralgr}.
 \end{itemize}
@@ -39,25 +39,25 @@ Furthermore, we explored different initialization strategies to generate diverse
     \item KNN-based initialization: distributing Gaussians based on a nearest-neighbor approach to better approximate image structures.
 \end{itemize}
 
-These variations allowed us to construct multiple datasets tailored to different experimental conditions, enabling a comprehensive evaluation of autoencoding techniques for Gaussian splats.
+These variations allowed us to construct multiple datasets tailored to different experimental conditions, enabling a comprehensive evaluation of autoencoding techniques for Gaussian Splats.
 
 \paragraph{Autoencoder architectures.}
-After generating Gaussian splats, we implemented three distinct autoencoder architectures: a deep autoencoder, a convolutional autoencoder, and a ResNet-based autoencoder. Each model was designed as an implementation of our abstract autoencoder module in \texttt{PyTorch} \cite{paszke2019pytorchai}, ensuring architectural flexibility and a standardized training pipeline.
+After generating Gaussian Splats, we implemented three distinct AE architectures: a deep AE, a convolutional AE, and a ResNet-based AE. Each model was designed as an implementation of our abstract AE module in \texttt{PyTorch} \cite{paszke2019pytorchai}, ensuring architectural flexibility and a standardized training pipeline.
 
-The deep autoencoder processes an input vector of dimension $23552$, encoding it into an $N$-dimensional latent space through four fully connected feed-forward layers. The decoder is a mirrored version of the encoder, with a final $\tanh$ activation to constrain outputs within the original value range.
+The deep AE processes an input vector of dimension $23552$, encoding it into an $N$-dimensional latent space through four fully connected feed-forward layers. The decoder is a mirrored version of the encoder, with a final $\tanh$ activation to constrain outputs within the original value range.
 
-The convolutional autoencoder takes as input a $32 \times 32 \times N$ matrix representation, where $N$ denotes the number of channels. The encoder consists of three sequential convolutional and max-pooling layers. The decoder, built using three transposed convolutional layers, reconstructs the original input with a $\tanh$ activation.
+The convolutional AE takes as input a $32 \times 32 \times N$ matrix representation, where $N$ denotes the number of channels. The encoder consists of three sequential convolutional and max-pooling layers. The decoder, built using three transposed convolutional layers, reconstructs the original input with a $\tanh$ activation.
 
-The ResNet-based autoencoder follows the architecture of ResNet-18 \cite{he2015deeprl}, with modifications inspired by the convolutional autoencoder. The residual connections enhance gradient flow, improving learning stability and convergence.
+The ResNet-based AE follows the architecture of ResNet-18 \cite{he2015deeprl}, with modifications inspired by the convolutional AE. The residual connections enhance gradient flow, improving learning stability and convergence.
 
 \paragraph{Experimental setup and training.}
-To evaluate the models, we conducted multiple experiments tailored to different representations of Gaussian splats:
+To evaluate the models, we conducted multiple experiments tailored to different representations of Gaussian Splats:
 
 \begin{itemize}
-\item vector-based encoding: the deep autoencoder was tested on a flattened representation, combining all Gaussian parameters into a single vector to assess the importance of spatial information,
+\item vector-based encoding: the deep AE was tested on a flattened representation, combining all Gaussian parameters into a single vector to assess the importance of spatial information,
 \item full-image encoding: the convolutional and ResNet-based models were trained on a transformed image representation where all 23 parameter channels were combined and learned simultaneously,
 \item single-channel encoding: an alternative approach involved training models on individual parameter channels, treating them as separate grayscale images to examine per-parameter learning efficiency,
-\item independent parameter models: a final experiment trained a distinct autoencoder for each splatting parameter, allowing for independent optimization but at the cost of increased complexity.
+\item independent parameter models: a final experiment trained a distinct AE for each Splatting parameter, allowing for independent optimization but at the cost of increased complexity.
 \end{itemize}
 
 \paragraph{Hyperparameter optimization.}

@@ -1,18 +1,20 @@
 \documentclass[10pt,twocolumn,letterpaper]{article}
 
 \usepackage{cvpr}
+\usepackage{float}
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{caption}
 \usepackage{booktabs}
 \usepackage{graphicx}
+\usepackage{pdfpages}
 
 \definecolor{cvprblue}{rgb}{0,0,0}
 \usepackage[pagebackref,breaklinks,colorlinks,allcolors=cvprblue]{hyperref}
 
 \title{Autoencoding Gaussian Splats in 2D}
 
-\author{Rok Mokotar\thanks{Both authors are students at Ludwig Maximilian University of Munich, Geschwister-Scholl-Platz 1, 80539 Munich, Germany. They contributed equally to this work in all aspects, including conceptualization, research, and writing. The order of authorship was determined randomly and does not reflect any difference in their contributions.}\\
+\author{Rok Mokotar\thanks{Both authors are students at Ludwig Maximilian University of Munich, Geschwister-Scholl-Platz 1, 80539 Munich, Germany. They contributed equally to this work in all aspects, including conceptualization, research, and writing. The order of authorship was determined randomly and does not reflect any difference in their contributions. The repository containing all source code is available at \url{https://github.com/mokot/visual-representation-learning/}.}\\
 LMU Munich\\
 {\tt\small Rok.Mokotar@campus.lmu.de}
 \and
@@ -35,5 +37,5 @@ LMU Munich\\
     \bibliographystyle{ieeenat_fullname}
     \bibliography{main}
 }
-
+\includepdf[pages=-]{sec/7_appendix.pdf}
 \end{document}

@@ -1,30 +1,32 @@
 \section{Discussion}
 \label{sec:discussion}
 
-As mentioned previously, one of the primary objectives of this study was to perform a comparative analysis between our Gaussian splat-based ResNet autoencoder and a more conventional pixel-based ResNet autoencoder. Both approaches, utilizing the same model architecture, were evaluated in terms of compression efficiency and reconstruction performance.
+As mentioned previously, one of the primary objectives of this study was to perform a comparative analysis between our Gaussian Splat-based ResNet AE and a more conventional pixel-based ResNet AE. Both approaches, utilizing the same model architecture, were evaluated in terms of compression efficiency and reconstruction performance.
 
-For our model, we trained a ResNet architecture on five separate models, each corresponding to a distinct Gaussian splat parameter, based on our newly created CIFAR-10 dataset of Gaussian splats. In contrast, for the conventional approach, we employed the ResNet-18 model implementation\footnote{\url{https://github.com/eleannavali/resnet-18-autoencoder}} and trained it on the original CIFAR-10 dataset.
+For our model, we trained a ResNet architecture on five separate models, each corresponding to a distinct Gaussian Splat parameter, based on our newly created CIFAR-10 dataset of Gaussian Splats. In contrast, for the conventional approach, we employed the ResNet-18 model implementation\footnote{\url{https://github.com/eleannavali/resnet-18-autoencoder}} and trained it on the original CIFAR-10 dataset.
 
-Figure \ref{TODO} illustrates the comparison between the two approaches using random test images from each class. The results indicate that our Gaussian splat-based model struggles to reconstruct images effectively, primarily capturing certain relationships related to rotations and colors while failing to preserve finer details and structures. Quantitative analysis, such as the Structural Similarity Index (SSIM), supports this observation, with the SSIM difference between the original and our model being TODO, while the difference between the original and the conventional model is TODO.
+Comparing the two approaches using random test images from each class, we observe that our Gaussian Splat-based model struggles with image reconstruction. While it captures certain relationships related to rotations and colors, it fails to preserve finer details and structures.
 
-Moreover, when comparing the compression ratios between both approaches, the conventional method remains more efficient, achieving a compression ratio of TODO, whereas our model achieves a compression ratio of TODO. This suggests that our approach not only fails to maintain high reconstruction accuracy but also results in inefficient compression, in some cases even increasing the image size. If the compression ratio exceeds 1, further investigation is required to determine whether this is an inherent limitation of our method or a fundamental trade-off associated with representing images using Gaussian splats.
+However, this observation is contradicted by the small MSE between input and output Splats, as well as the minimal difference between individual parameters, as shown in Fig. \ref{fig:individual-params}. Additionally, further quantitative analysis, such as the Structural Similarity Index (SSIM), indicates that the convolutional AE produces accurate reconstructions. The SSIM difference between the original image and our model’s reconstruction is $0.76$, whereas for the conventional model trained directly on images instead of Splats, the difference is $0.36$.
 
-\subsection{Future Work}
+Furthermore, when comparing compression ratios, the conventional method proves less efficient, achieving a compression ratio of $0.75$, while our model achieves a ratio of $0.5$. This suggests that, although our approach does not appear to maintain high reconstruction accuracy, at least visually, it offers a superior compression efficiency.
 
-Finally, we have identified several potential areas for future research and applications where this approach could be utilized:
+\paragraph{Future Work.}
+
+Finally, we have identified several potential areas for future research and applications where this approach could be employed:
 
 \begin{itemize}
     \item \textbf{Exploring the effect of latent space size on reconstruction error:} It would be valuable to investigate how the reconstruction error sinks as the size of the latent space increases. Understanding this relationship could help optimize the balance between compression efficiency and reconstruction quality.
     
-    \item \textbf{Loss function refinement:} An interesting avenue of investigation would be to explore whether the autoencoder should be trained by minimizing the loss based only on the Gaussian splats, or if it would be beneficial to enforce consistency between the rendered splat and the original image. This could potentially improve the reconstruction accuracy or reduce artifacts.
+    \item \textbf{Loss function refinement:} An interesting avenue of investigation would be to explore whether the AE should be trained by minimizing the loss based only on the Gaussian Splats, or if it would be beneficial to enforce consistency between the rendered Splat and the original image. This could potentially improve the reconstruction accuracy or reduce artifacts.
     
-    \item \textbf{Implementation of Hierarchical Perceiver (HiP):} Incorporating HiP, as discussed in \cite{carreira2022hierarchicalp}, could be an interesting future work. The hierarchical nature of HiP may provide better structure to the encoding process, enhancing performance on Gaussian splats.
+    \item \textbf{Implementation of Hierarchical Perceiver (HiP):} Incorporating HiP, as discussed in \cite{carreira2022hierarchicalp}, could be an interesting future work. The hierarchical nature of HiP may provide better structure to the encoding process, enhancing performance on Gaussian Splats.
     
-    \item \textbf{Latent space classification:} Exploring the possibility of using the latent space for downstream tasks, such as classification, could open up new applications for Gaussian splat-based representations.
+    \item \textbf{Latent space classification:} Exploring the possibility of using the latent space for downstream tasks, such as classification, could open up new applications for Gaussian Splat-based representations.
     
     \item \textbf{Generative modeling on the latent space:} Building a generative model (e.g., Generative Adversarial Networks or Stable Diffusion) on top of the latent space could allow us to generate new images or 3D scenes from the compressed representations, facilitating content creation or data augmentation tasks.
     
-    \item \textbf{Gaussian splat generation:} Developing a model capable of generating new Gaussian splats (e.g., a Variational Autoencoder) would be an intriguing direction. This could lead to more sophisticated image synthesis techniques, allowing us to generate realistic images directly from the splat parameters.
+    \item \textbf{Gaussian Splat generation:} Developing a model capable of generating new Gaussian Splats (e.g., a VAE) would be an intriguing direction. This could lead to more sophisticated image synthesis techniques, allowing us to generate realistic images directly from the Splat parameters.
     
-    \item \textbf{Masked Autoencoders (MAE) for smaller images:} Finally, investigating the application of MAE on smaller images could help determine if this approach could provide more efficient representations and faster processing times, especially in cases where the dataset is constrained in size.
+    \item \textbf{MAE for smaller images:} Finally, investigating the application of MAE on smaller images could help determine if this approach could provide more efficient representations and faster processing times, especially in cases where the dataset is constrained in size.
 \end{itemize}
